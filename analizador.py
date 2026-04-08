@@ -22,28 +22,32 @@ if arquivos_enviados:
     for arquivo in arquivos_enviados:
         with st.expander(f"📊 RELATÓRIO: {arquivo.name.upper()}", expanded=True):
             try:
-                # Carrega o arquivo inteiro
                 df = pd.read_excel(arquivo)
                 
                 # ==========================================
-                # O TRUQUE MESTRE: AUTO-DETECÇÃO DE CABEÇALHO
-                # Se a planilha tem título mesclado na linha 1, o pandas cria colunas "Unnamed".
-                # O robô vai caçar o cabeçalho real nas 15 primeiras linhas.
+                # AUTO-DETECÇÃO DE CABEÇALHO COM PROTEÇÃO CONTRA DUPLICATAS
                 # ==========================================
                 if any("Unnamed" in str(c) for c in df.columns):
                     for idx, row in df.head(15).iterrows():
                         linha_texto = " ".join([str(x).lower() for x in row.values])
-                        # Se achar as palavras chaves na linha, essa linha vira o cabeçalho
-                        if ('valor' in linha_texto or 'r$' in linha_texto) and ('data' in linha_texto or 'venc' in linha_texto or 'cliente' in linha_texto):
-                            df.columns = row
+                        if ('valor' in linha_texto or 'r$' in linha_texto) and ('data' in linha_texto or 'venc' in linha_texto or 'cliente' in linha_texto or 'empresa' in linha_texto):
+                            
+                            # Cria nomes únicos para evitar o erro "Duplicate column names"
+                            nomes_limpos = []
+                            for i, c in enumerate(row.values):
+                                nome = str(c).strip() if pd.notna(c) and str(c).strip() != "" else f"vazio_{i}"
+                                if nome in nomes_limpos:
+                                    nome = f"{nome}_{i}"
+                                nomes_limpos.append(nome)
+                            
+                            df.columns = nomes_limpos
                             df = df.iloc[idx+1:].reset_index(drop=True)
                             break
                 
-                # Limpa colunas e linhas fantasmas (100% vazias) geradas por formatação do Excel
                 df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
 
                 # ==========================================
-                # MAPEAR AS COLUNAS ENCONTRADAS
+                # MAPEAMENTO DAS COLUNAS
                 # ==========================================
                 cols = {str(c).lower().strip(): c for c in df.columns}
                 
@@ -52,15 +56,29 @@ if arquivos_enviados:
                 col_cliente = next((v for k, v in cols.items() if 'cliente' in k or 'nome' in k or 'empresa' in k or 'descrição' in k or 'fornecedor' in k), "S/N")
                 col_orc = next((v for k, v in cols.items() if 'orc' in k or 'pedido' in k or 'número' in k or 'doc' in k), None)
                 col_parcela = next((v for k, v in cols.items() if 'parcela' in k), None)
+                
+                # Procura a coluna de observações ou status
+                col_status = next((v for k, v in cols.items() if 'obs' in k or 'status' in k or 'situação' in k), None)
 
                 if col_data and col_valor:
-                    # Formata as colunas matemáticas para evitar erros
                     df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
                     df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
                     
-                    # Remove linhas que não têm data válida
                     df_valid = df.dropna(subset=[col_data])
                     
+                    # ==========================================
+                    # O FILTRO DE BAIXA (REMOVER OS "PAGOS")
+                    # ==========================================
+                    if col_status:
+                        # Se achou a coluna de observação, esconde tudo que tem "pago"
+                        mask_pago = df_valid[col_status].astype(str).str.lower().str.contains('pago')
+                        df_valid = df_valid[~mask_pago]
+                    else:
+                        # Se não achar por nome, ataca direto a última coluna da planilha
+                        ultima_coluna = df_valid.columns[-1]
+                        mask_pago = df_valid[ultima_coluna].astype(str).str.lower().str.contains('pago')
+                        df_valid = df_valid[~mask_pago]
+
                     hoje = pd.to_datetime('today').normalize()
                     
                     df_vencidos = df_valid[df_valid[col_data] < hoje].sort_values(by=col_data)
@@ -70,7 +88,6 @@ if arquivos_enviados:
                     subtotal_a_vencer = df_a_vencer[col_valor].sum()
                     total_geral = subtotal_vencidos + subtotal_a_vencer
                     
-                    # Aba interativa com a apresentação exigida
                     tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Planilha Completa"])
                     
                     with tab_venc:
@@ -86,7 +103,6 @@ if arquivos_enviados:
                                 data_f = linha[col_data].strftime('%d/%m/%Y')
                                 cliente_nome = linha.get(col_cliente, 'S/N')
                                 
-                                # Monta o texto de Orçamento e Parcela se eles existirem na planilha
                                 txt_orc = f", ORÇ: {int(linha[col_orc]) if pd.notnull(linha[col_orc]) else 'S/N'}" if col_orc else ""
                                 txt_parc = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
                                 
@@ -95,7 +111,7 @@ if arquivos_enviados:
                             st.write("")
                             st.markdown(f"**Subtotal: {formatar_moeda(subtotal_vencidos)};**")
                         else:
-                            st.success("Nenhum item vencido.")
+                            st.success("Nenhum item vencido pendente de pagamento.")
                             st.markdown(f"**Subtotal: R$ 0,00;**")
                         
                         st.write("")
@@ -121,7 +137,6 @@ if arquivos_enviados:
 
                 else:
                     st.info(f"Modo Estrutural: O robô detectou que '{arquivo.name}' é um relatório sem dados financeiros (Data e Valor).")
-                    st.write(f"Volume: {df.shape[0]} linhas.")
                     st.dataframe(df.head(10), use_container_width=True)
 
             except Exception as e:
