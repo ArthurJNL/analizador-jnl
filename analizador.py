@@ -1,96 +1,88 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # 1. CONFIGURAÇÕES DA PÁGINA
-st.set_page_config(page_title="Analizador de Documentos", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Analizador JNL", page_icon="💰", layout="wide")
 
-st.title("📄 ANALIZADOR AVANÇADO DE DOCUMENTOS")
-st.write("Anexe uma ou mais planilhas abaixo para gerar análises dinâmicas.")
+st.title("📄 ANALIZADOR FINANCEIRO JNL")
+st.write("Análise detalhada de contas e vencimentos por planilha.")
 
 # ==========================================
-# BOTÃO DE UPLOAD MULTIPLO
+# UPLOAD DE ARQUIVOS
 # ==========================================
-# accept_multiple_files=True permite carregar várias planilhas de uma vez
-arquivos_enviados = st.file_uploader("Arraste e solte ou clique para procurar", type=["xlsx", "xls", "xlsm"], accept_multiple_files=True)
+arquivos_enviados = st.file_uploader("Selecione as planilhas de contas", type=["xlsx", "xls", "xlsm"], accept_multiple_files=True)
 
 st.markdown("---")
 
+def formatar_moeda(valor):
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 # ==========================================
-# LÓGICA DO MOTOR DE ANÁLISE (O "Falso" IA)
+# LÓGICA DE PROCESSAMENTO INDIVIDUAL
 # ==========================================
 if arquivos_enviados:
     for arquivo in arquivos_enviados:
-        st.success(f"✅ Analisando: **{arquivo.name}**")
-        
-        try:
-            df = pd.read_excel(arquivo)
-            
-            # Os 5 Botões Interativos (Abas) para navegação sem recarregar a página
-            aba1, aba2, aba3, aba4, aba5 = st.tabs([
-                "📊 Resumo Geral", 
-                "📅 Vencimentos", 
-                "🧠 Opinião Analítica", 
-                "💡 Ideias de Melhoria", 
-                "🎯 Ações Sugeridas"
-            ])
-            
-            with aba1:
-                st.write("### Resumo da Estrutura")
-                st.info(f"O documento possui {df.shape[0]} linhas preenchidas e {df.shape[1]} colunas.")
-                st.write("🔎 **Amostra dos Dados:**")
-                st.dataframe(df.head(), use_container_width=True)
+        with st.expander(f"📊 RELATÓRIO: {arquivo.name.upper()}", expanded=True):
+            try:
+                df = pd.read_excel(arquivo)
                 
-            with aba2:
-                st.write("### Inteligência de Datas e Vencimentos")
-                # O robô procura automaticamente colunas que parecem datas
-                colunas_data = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
+                # TENTATIVA DE MAPEAMENTO AUTOMÁTICO DE COLUNAS
+                cols = {c.lower(): c for c in df.columns}
                 
-                if not colunas_data:
-                    st.warning("O robô não encontrou nenhuma coluna formatada como Data/Vencimento nesta planilha.")
-                else:
-                    hoje = pd.to_datetime('today')
-                    for col in colunas_data:
-                        vencidos = df[df[col] < hoje].shape[0]
-                        vencem_breve = df[(df[col] >= hoje) & (df[col] <= hoje + timedelta(days=30))].shape[0]
-                        st.write(f"**Análise da Coluna: {col}**")
-                        st.error(f"❌ **{vencidos}** itens já estão vencidos ou com data no passado.")
-                        st.warning(f"⚠️ **{vencem_breve}** itens vencem nos próximos 30 dias.")
-                        st.success(f"✅ O restante possui prazo estendido.")
-                        st.write("---")
+                # Busca colunas por palavras-chave
+                col_data = next((v for k, v in cols.items() if 'vencimento' in k or 'data' in k), None)
+                col_valor = next((v for k, v in cols.items() if 'valor' in k or 'r$' in k or 'total' in k), None)
+                col_cliente = next((v for k, v in cols.items() if 'cliente' in k or 'nome' in k or 'empresa' in k), "CLIENTE NÃO IDENTIFICADO")
+                col_orc = next((v for k, v in cols.items() if 'orc' in k or 'pedido' in k or 'número' in k), "S/N")
+                col_parcela = next((v for k, v in cols.items() if 'parcela' in k), "UNICA")
+
+                if col_data and col_valor:
+                    # Preparação dos dados
+                    df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
+                    df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
+                    hoje = pd.to_datetime('today').normalize()
+                    
+                    df_vencidos = df[df[col_data] < hoje].sort_values(by=col_data)
+                    df_a_vencer = df[df[col_data] >= hoje].sort_values(by=col_data)
+                    
+                    # CÁLCULOS
+                    subtotal_vencidos = df_vencidos[col_valor].sum()
+                    subtotal_a_vencer = df_a_vencer[col_valor].sum()
+                    total_geral = subtotal_vencidos + subtotal_a_vencer
+                    
+                    # ABAS DE ANÁLISE
+                    tab_venc, tab_dados = st.tabs(["📅 Resumo de Vencimentos", "📋 Ver Planilha Completa"])
+                    
+                    with tab_venc:
+                        st.markdown("#### Segue o resumo das contas a receber:")
                         
-            with aba3:
-                st.write("### Opinião do Sistema")
-                vazios = df.isnull().sum().sum()
-                total_celulas = df.shape[0] * df.shape[1]
-                percentual_vazio = (vazios / total_celulas) * 100 if total_celulas > 0 else 0
-                
-                if percentual_vazio > 15:
-                    st.warning(f"A planilha apresenta {percentual_vazio:.1f}% de células em branco. Minha opinião técnica é que os dados estão fragmentados, o que pode prejudicar análises cruciais da empresa e causar falhas de interpretação.")
-                elif df.shape[0] < 10:
-                    st.info("A planilha contém um volume muito baixo de dados. Opino que esta seja apenas uma extração rápida, um rascunho de controle ou um pedido pequeno.")
+                        st.markdown("**Itens já vencidos:**")
+                        if not df_vencidos.empty:
+                            for _, linha in df_vencidos.iterrows():
+                                data_f = linha[col_data].strftime('%d/%m/%Y') if not pd.isnull(linha[col_data]) else "S/D"
+                                st.write(f"- {linha[col_cliente]}, ORÇ: {linha[col_orc]}, {linha[col_parcela]}, {formatar_moeda(linha[col_valor])}, {data_f}")
+                            
+                            st.write(f"**Subtotal: {formatar_moeda(subtotal_vencidos)}**")
+                        else:
+                            st.success("Não há itens vencidos nesta planilha.")
+                        
+                        st.markdown("---")
+                        st.write(f"**Itens a vencer:** {len(df_a_vencer)} (Subtotal: {formatar_moeda(subtotal_a_vencer)})")
+                        st.write(f"**Valor total em aberto: {formatar_moeda(total_geral)}**")
+                        
+                        if not df_a_vencer.empty:
+                            proximo = df_a_vencer.iloc[0]
+                            data_p = proximo[col_data].strftime('%d/%m/%Y')
+                            st.write(f"**Próximo vencimento:** {proximo[col_cliente]}, ORÇ: {proximo[col_orc]}, {proximo[col_parcela]}, {formatar_moeda(proximo[col_valor])}, {data_p}")
+
+                    with tab_dados:
+                        st.dataframe(df, use_container_width=True)
                 else:
-                    st.success("A planilha apresenta uma integridade estrutural excelente. O preenchimento está consistente e pronto para decisões estratégicas, financeiras ou logísticas de importação.")
-                    
-            with aba4:
-                st.write("### Ideias de Melhoria na Tabela")
-                st.write("- **Padronização:** Recomendo revisar colunas de texto para garantir que descrições e marcas estejam em MAIÚSCULO, conforme os padrões corporativos.")
-                if "Unnamed" in str(df.columns):
-                    st.error("- **Cabeçalhos:** O robô detectou colunas sem nome. É fundamental renomear a primeira linha no Excel para não perder dados nas buscas.")
-                if df.duplicated().sum() > 0:
-                    st.warning(f"- **Repetições:** O sistema detectou {df.duplicated().sum()} linhas exatamente iguais (duplicadas). Recomendo a limpeza para não haver cobranças ou pedidos em dobro.")
-                else:
-                    st.write("- A tabela não apresenta duplicidades críticas. A formatação atual parece viável.")
-                    
-            with aba5:
-                st.write("### Próximos Passos (Plano de Ação)")
-                st.write("1. Investigar e cobrar imediatamente os itens pontuados na aba de 'Vencimentos'.")
-                st.write("2. Preencher os espaços em branco para garantir que as informações estejam precisas para o faturamento e conferência do almoxarifado.")
-                st.write("3. Compartilhar os apontamentos mais urgentes desta análise com os responsáveis da equipe.")
-                
-        except Exception as e:
-            st.error(f"❌ Erro ao tentar ler a planilha {arquivo.name}. Arquivo corrompido ou formato não suportado. Detalhe técnico: {e}")
-        
-        st.markdown("---")
+                    st.error(f"❌ Não foi possível identificar colunas de 'Data' e 'Valor' no arquivo {arquivo.name}. Verifique os títulos da primeira linha.")
+
+            except Exception as e:
+                st.error(f"Erro ao processar {arquivo.name}: {e}")
+
 else:
-    st.info("O robô está ocioso. Aguardando o envio de planilhas para iniciar o trabalho.")
+    st.info("Aguardando o senhor anexar as planilhas de faturamento.")
