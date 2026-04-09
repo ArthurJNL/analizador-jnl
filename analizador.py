@@ -20,6 +20,17 @@ def formatar_moeda(valor):
         return f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return "R$ 0,00"
 
+def formatar_orcamento(valor):
+    # Proteção máxima contra textos e células vazias
+    if pd.isna(valor) or str(valor).strip() == "" or str(valor).strip().upper() in ["S/N", "NAN", "NONE"]:
+        return "S/N"
+    try:
+        # Se for número como 123.0, tira o .0
+        return str(int(float(valor)))
+    except (ValueError, TypeError):
+        # Se for texto (ex: ORC-123 ou letras misturadas), devolve como está
+        return str(valor).strip()
+
 # ==========================================
 # MOTOR DE AGENDA INDIVIDUAL (ME LEMBRE)
 # ==========================================
@@ -31,7 +42,7 @@ def criar_lembrete_item(data_venc, cliente, valor, orc):
     
     cliente_limpo = str(cliente).replace("\n", " ")
     valor_f = formatar_moeda(valor)
-    orc_f = str(int(orc)) if orc and pd.notnull(orc) else "S/N"
+    orc_f = formatar_orcamento(orc)
     uid = f"{uuid.uuid4()}@jnl.com"
     
     ics = (
@@ -131,8 +142,12 @@ if arquivos_enviados:
                                 for _, linha in df_vencidos.iterrows():
                                     data_f = linha[col_data].strftime('%d/%m/%Y')
                                     c_nome = linha.get(col_cliente, 'S/N')
-                                    t_orc = f", ORÇ: {int(linha[col_orc]) if pd.notnull(linha[col_orc]) else 'S/N'}" if col_orc else ""
+                                    
+                                    # Formatação do orçamento consertada
+                                    orc_val = formatar_orcamento(linha.get(col_orc))
+                                    t_orc = f", ORÇ: {orc_val}" if col_orc else ""
                                     t_parc = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
+                                    
                                     st.write(f"{c_nome}{t_orc}{t_parc}, {formatar_moeda(linha[col_valor])}, {data_f}")
                                 
                                 st.write("")
@@ -165,17 +180,19 @@ if arquivos_enviados:
                                     c1, c2 = st.columns([0.85, 0.15])
                                     data_f = linha[col_data].strftime('%d/%m/%Y')
                                     cliente_n = linha.get(col_cliente, 'S/N')
-                                    orc_v = linha.get(col_orc, 'S/N')
+                                    
+                                    # Formatação do orçamento consertada
+                                    orc_v = formatar_orcamento(linha.get(col_orc))
                                     parc_v = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
                                     valor_v = formatar_moeda(linha[col_valor])
                                     
                                     c1.write(f"📌 **{cliente_n}** | ORÇ: {orc_v}{parc_v} | {valor_v} | Venc: {data_f}")
                                     
-                                    conteudo_ics = criar_lembrete_item(linha[col_data], cliente_n, linha[col_valor], orc_v)
+                                    conteudo_ics = criar_lembrete_item(linha[col_data], cliente_n, linha[col_valor], linha.get(col_orc))
                                     c2.download_button(
                                         label="🔔 Me lembre",
                                         data=conteudo_ics,
-                                        file_name=f"Lembrete_{str(cliente_n)[:10]}.ics",
+                                        file_name=f"Lembrete_{str(cliente_n)[:10].strip()}.ics",
                                         mime="text/calendar",
                                         key=str(uuid.uuid4())
                                     )
