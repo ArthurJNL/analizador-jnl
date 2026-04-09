@@ -1,146 +1,127 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from docx import Document # Para ler arquivos Word
 
 # 1. CONFIGURAÇÕES DA PÁGINA
-st.set_page_config(page_title="Analizador JNL", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
 
-st.title("📄 ANALIZADOR FINANCEIRO JNL")
-st.write("Análise inteligente de planilhas de faturamento.")
+st.title("🛡️ ANALIZADOR INTEGRADO JNL")
+st.write("Análise de Faturamento, Patrimônio e Catálogos (Excel, Word e TXT).")
 
-arquivos_enviados = st.file_uploader("Selecione as planilhas", type=["xlsx", "xls", "xlsm"], accept_multiple_files=True)
+# Atualizamos os tipos de arquivos aceitos
+arquivos_enviados = st.file_uploader("Arraste seus arquivos aqui", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
 
 st.markdown("---")
 
 def formatar_moeda(valor):
     try:
         return f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
-        return "R$ 0,00"
+    except: return "R$ 0,00"
 
+# ==========================================
+# PROCESSAMENTO DE ARQUIVOS
+# ==========================================
 if arquivos_enviados:
     for arquivo in arquivos_enviados:
-        with st.expander(f"📊 RELATÓRIO: {arquivo.name.upper()}", expanded=True):
-            try:
-                df = pd.read_excel(arquivo)
-                
-                # ==========================================
-                # AUTO-DETECÇÃO DE CABEÇALHO COM PROTEÇÃO CONTRA DUPLICATAS
-                # ==========================================
-                if any("Unnamed" in str(c) for c in df.columns):
-                    for idx, row in df.head(15).iterrows():
-                        linha_texto = " ".join([str(x).lower() for x in row.values])
-                        if ('valor' in linha_texto or 'r$' in linha_texto) and ('data' in linha_texto or 'venc' in linha_texto or 'cliente' in linha_texto or 'empresa' in linha_texto):
-                            
-                            # Cria nomes únicos para evitar o erro "Duplicate column names"
-                            nomes_limpos = []
-                            for i, c in enumerate(row.values):
-                                nome = str(c).strip() if pd.notna(c) and str(c).strip() != "" else f"vazio_{i}"
-                                if nome in nomes_limpos:
-                                    nome = f"{nome}_{i}"
-                                nomes_limpos.append(nome)
-                            
-                            df.columns = nomes_limpos
-                            df = df.iloc[idx+1:].reset_index(drop=True)
-                            break
-                
-                df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
-
-                # ==========================================
-                # MAPEAMENTO DAS COLUNAS
-                # ==========================================
-                cols = {str(c).lower().strip(): c for c in df.columns}
-                
-                col_data = next((v for k, v in cols.items() if 'vencimento' in k or 'data' in k), None)
-                col_valor = next((v for k, v in cols.items() if 'valor' in k or 'r$' in k or 'total' in k), None)
-                col_cliente = next((v for k, v in cols.items() if 'cliente' in k or 'nome' in k or 'empresa' in k or 'descrição' in k or 'fornecedor' in k), "S/N")
-                col_orc = next((v for k, v in cols.items() if 'orc' in k or 'pedido' in k or 'número' in k or 'doc' in k), None)
-                col_parcela = next((v for k, v in cols.items() if 'parcela' in k), None)
-                
-                # Procura a coluna de observações ou status
-                col_status = next((v for k, v in cols.items() if 'obs' in k or 'status' in k or 'situação' in k), None)
-
-                if col_data and col_valor:
-                    df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
-                    df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
+        extensao = arquivo.name.split('.')[-1].lower()
+        
+        with st.expander(f"📄 ARQUIVO: {arquivo.name.upper()}", expanded=True):
+            
+            # --- CASO 1: PLANILHAS EXCEL ---
+            if extensao in ['xlsx', 'xls', 'xlsm']:
+                try:
+                    df = pd.read_excel(arquivo)
                     
-                    df_valid = df.dropna(subset=[col_data])
+                    # Auto-detecção de cabeçalho
+                    if any("Unnamed" in str(c) for c in df.columns):
+                        for idx, row in df.head(10).iterrows():
+                            linha_texto = " ".join([str(x).lower() for x in row.values])
+                            if any(k in linha_texto for k in ['valor', 'r$', 'data', 'venc', 'cliente', 'item', 'patrimonio']):
+                                df.columns = [str(n).strip() if pd.notna(n) else f"vazio_{i}" for i, n in enumerate(row.values)]
+                                df = df.iloc[idx+1:].reset_index(drop=True)
+                                break
                     
-                    # ==========================================
-                    # O FILTRO DE BAIXA (REMOVER OS "PAGOS")
-                    # ==========================================
-                    if col_status:
-                        # Se achou a coluna de observação, esconde tudo que tem "pago"
-                        mask_pago = df_valid[col_status].astype(str).str.lower().str.contains('pago')
-                        df_valid = df_valid[~mask_pago]
+                    df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
+                    cols_limpas = {str(c).lower().strip(): c for c in df.columns}
+
+                    # Identifica se é FINANCEIRO ou PATRIMÔNIO
+                    is_financeiro = any(k in str(cols_limpas.keys()) for k in ['vencimento', 'data']) and any(k in str(cols_limpas.keys()) for k in ['valor', 'r$'])
+                    
+                    if is_financeiro:
+                        # [LÓGICA FINANCEIRA QUE JÁ FUNCIONA]
+                        col_data = next((v for k, v in cols_limpas.items() if 'vencimento' in k or 'data' in k), None)
+                        col_valor = next((v for k, v in cols_limpas.items() if 'valor' in k or 'r$' in k), None)
+                        col_status = next((v for k, v in cols_limpas.items() if 'pago' in k or 'obs' in k or 'situa' in k), df.columns[-1])
+                        
+                        df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
+                        df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
+                        
+                        # Filtro de Pagos
+                        mask_pago = df[col_status].astype(str).str.lower().str.contains('pago')
+                        df_pendente = df[~mask_pago].dropna(subset=[col_data])
+                        
+                        hoje = pd.to_datetime('today').normalize()
+                        vencidos = df_pendente[df_pendente[col_data] < hoje]
+                        
+                        st.write(f"### Resumo Financeiro")
+                        st.error(f"Itens Vencidos: {len(vencidos)} | Subtotal: {formatar_moeda(vencidos[col_valor].sum())}")
+                        st.dataframe(vencidos, use_container_width=True)
+                    
                     else:
-                        # Se não achar por nome, ataca direto a última coluna da planilha
-                        ultima_coluna = df_valid.columns[-1]
-                        mask_pago = df_valid[ultima_coluna].astype(str).str.lower().str.contains('pago')
-                        df_valid = df_valid[~mask_pago]
-
-                    hoje = pd.to_datetime('today').normalize()
-                    
-                    df_vencidos = df_valid[df_valid[col_data] < hoje].sort_values(by=col_data)
-                    df_a_vencer = df_valid[df_valid[col_data] >= hoje].sort_values(by=col_data)
-                    
-                    subtotal_vencidos = df_vencidos[col_valor].sum()
-                    subtotal_a_vencer = df_a_vencer[col_valor].sum()
-                    total_geral = subtotal_vencidos + subtotal_a_vencer
-                    
-                    tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Planilha Completa"])
-                    
-                    with tab_venc:
-                        nome_planilha_limpo = arquivo.name.upper().replace(".XLSX", "").replace(".XLSM", "").replace(".XLS", "")
-                        st.markdown(f"#### Segue o resumo da planilha {nome_planilha_limpo}:")
-                        st.write("")
+                        # [LÓGICA DE PATRIMÔNIO / GERAL]
+                        st.write("### Análise de Controle de Patrimônio")
+                        total_itens = len(df)
                         
-                        st.markdown("**Itens já vencidos:**")
-                        st.write("")
+                        # Analisa buracos nos dados
+                        dados_faltantes = df.isnull().sum()
+                        colunas_com_falha = dados_faltantes[dados_faltantes > 0]
                         
-                        if not df_vencidos.empty:
-                            for _, linha in df_vencidos.iterrows():
-                                data_f = linha[col_data].strftime('%d/%m/%Y')
-                                cliente_nome = linha.get(col_cliente, 'S/N')
-                                
-                                txt_orc = f", ORÇ: {int(linha[col_orc]) if pd.notnull(linha[col_orc]) else 'S/N'}" if col_orc else ""
-                                txt_parc = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
-                                
-                                st.write(f"{cliente_nome}{txt_orc}{txt_parc}, {formatar_moeda(linha[col_valor])}, {data_f}")
-                            
-                            st.write("")
-                            st.markdown(f"**Subtotal: {formatar_moeda(subtotal_vencidos)};**")
+                        col1, col2 = st.columns(2)
+                        col1.metric("Total de Itens", total_itens)
+                        col2.metric("Colunas Incompletas", len(colunas_com_falha))
+                        
+                        if not colunas_com_falha.empty:
+                            st.warning("🚨 **Atenção: Faltam dados no inventário!**")
+                            for col, qtd in colunas_com_falha.items():
+                                st.write(f"- A coluna **'{col}'** está sem informação em **{qtd}** itens.")
                         else:
-                            st.success("Nenhum item vencido pendente de pagamento.")
-                            st.markdown(f"**Subtotal: R$ 0,00;**")
+                            st.success("✅ Todos os itens do patrimônio estão com os dados preenchidos!")
                         
-                        st.write("")
-                        st.write("")
-                        st.markdown(f"**Itens a vencer: {len(df_a_vencer)} (Subtotal: {formatar_moeda(subtotal_a_vencer)});**")
-                        st.write("")
-                        st.write("")
-                        st.markdown(f"**Valor total em aberto: {formatar_moeda(total_geral)};**")
-                        st.write("")
-                        st.write("")
-                        
-                        if not df_a_vencer.empty:
-                            proximo = df_a_vencer.iloc[0]
-                            data_p = proximo[col_data].strftime('%d/%m/%Y')
-                            cliente_p = proximo.get(col_cliente, 'S/N')
-                            txt_orc_p = f", ORÇ: {int(proximo[col_orc]) if pd.notnull(proximo[col_orc]) else 'S/N'}" if col_orc else ""
-                            txt_parc_p = f", {proximo[col_parcela]}" if col_parcela and pd.notnull(proximo[col_parcela]) else ""
-                            
-                            st.markdown(f"**Próximo vencimento:** {cliente_p}{txt_orc_p}{txt_parc_p}, {formatar_moeda(proximo[col_valor])}, {data_p}")
-
-                    with tab_dados:
+                        st.write("---")
+                        st.write("**Visualização dos Itens:**")
                         st.dataframe(df, use_container_width=True)
 
-                else:
-                    st.info(f"Modo Estrutural: O robô detectou que '{arquivo.name}' é um relatório sem dados financeiros (Data e Valor).")
-                    st.dataframe(df.head(10), use_container_width=True)
+                except Exception as e:
+                    st.error(f"Erro ao ler planilha: {e}")
 
-            except Exception as e:
-                st.error(f"Erro ao processar: {e}")
+            # --- CASO 2: DOCUMENTOS (WORD OU TXT) ---
+            elif extensao in ['docx', 'txt']:
+                st.write("### 🔍 Pesquisa Inteligente no Catálogo")
+                conteudo = []
+                
+                if extensao == 'docx':
+                    doc = Document(arquivo)
+                    conteudo = [p.text for p in doc.paragraphs if p.text.strip() != ""]
+                else:
+                    conteudo = arquivo.read().decode("utf-8").splitlines()
+                
+                # Campo de busca dinâmico
+                busca = st.text_input(f"O que deseja filtrar em {arquivo.name}?", placeholder="Digite o código da peça, nome ou marca...")
+                
+                if busca:
+                    resultados = [linha for linha in conteudo if busca.lower() in linha.lower()]
+                    if resultados:
+                        st.success(f"Encontrados {len(resultados)} correspondências:")
+                        for r in resultados:
+                            st.info(r)
+                    else:
+                        st.warning("Nenhum item encontrado com esse termo.")
+                else:
+                    st.write("Digite algo acima para filtrar o catálogo.")
+                    with st.expander("Ver conteúdo completo"):
+                        for linha in conteudo:
+                            st.write(linha)
 
 else:
-    st.info("Aguardando o senhor anexar as planilhas.")
+    st.info("Aguardando o envio de planilhas ou catálogos.")

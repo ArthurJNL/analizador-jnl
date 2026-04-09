@@ -1,3 +1,4 @@
 # ID-SEC: [JNL-MVP-NUVEM-ANALIZADOR]
 pandas
 openpyxl
+python-docx
