@@ -21,14 +21,11 @@ def formatar_moeda(valor):
     except: return "R$ 0,00"
 
 def formatar_orcamento(valor):
-    # Proteção máxima contra textos e células vazias
     if pd.isna(valor) or str(valor).strip() == "" or str(valor).strip().upper() in ["S/N", "NAN", "NONE"]:
         return "S/N"
     try:
-        # Se for número como 123.0, tira o .0
         return str(int(float(valor)))
     except (ValueError, TypeError):
-        # Se for texto (ex: ORC-123 ou letras misturadas), devolve como está
         return str(valor).strip()
 
 # ==========================================
@@ -98,7 +95,10 @@ if arquivos_enviados:
                         col_data = next((v for k, v in cols_limpas.items() if 'vencimento' in k or 'data' in k), None)
                         col_valor = next((v for k, v in cols_limpas.items() if 'valor' in k or 'r$' in k), None)
                         col_cliente = next((v for k, v in cols_limpas.items() if 'cliente' in k or 'nome' in k or 'empresa' in k), "S/N")
-                        col_orc = next((v for k, v in cols_limpas.items() if 'orc' in k or 'pedido' in k or 'doc' in k), None)
+                        
+                        # O REPARO CIRÚRGICO ESTÁ AQUI: ADIÇÃO DO "ORÇ" COM CEDILHA
+                        col_orc = next((v for k, v in cols_limpas.items() if 'orc' in k or 'orç' in k or 'pedido' in k or 'doc' in k), None)
+                        
                         col_parcela = next((v for k, v in cols_limpas.items() if 'parcela' in k), None)
                         col_status = next((v for k, v in cols_limpas.items() if 'obs' in k or 'status' in k or 'situa' in k), None)
                         
@@ -143,9 +143,7 @@ if arquivos_enviados:
                                     data_f = linha[col_data].strftime('%d/%m/%Y')
                                     c_nome = linha.get(col_cliente, 'S/N')
                                     
-                                    # Formatação do orçamento consertada
-                                    orc_val = formatar_orcamento(linha.get(col_orc))
-                                    t_orc = f", ORÇ: {orc_val}" if col_orc else ""
+                                    t_orc = f", ORÇ: {formatar_orcamento(linha.get(col_orc))}" if col_orc else ""
                                     t_parc = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
                                     
                                     st.write(f"{c_nome}{t_orc}{t_parc}, {formatar_moeda(linha[col_valor])}, {data_f}")
@@ -169,11 +167,8 @@ if arquivos_enviados:
                                 st.markdown("#### Próximos Vencimentos em Destaque (Lembrete disponível):")
                                 st.write("")
                                 
-                                # Extrai as duas datas únicas mais próximas
                                 datas_unicas = df_a_vencer[col_data].dt.date.unique()
                                 duas_proximas_datas = datas_unicas[:2] if len(datas_unicas) >= 2 else datas_unicas
-                                
-                                # Filtra apenas os itens dessas duas datas
                                 df_proximos = df_a_vencer[df_a_vencer[col_data].dt.date.isin(duas_proximas_datas)]
                                 
                                 for _, linha in df_proximos.iterrows():
@@ -181,12 +176,11 @@ if arquivos_enviados:
                                     data_f = linha[col_data].strftime('%d/%m/%Y')
                                     cliente_n = linha.get(col_cliente, 'S/N')
                                     
-                                    # Formatação do orçamento consertada
-                                    orc_v = formatar_orcamento(linha.get(col_orc))
+                                    t_orc = f" | ORÇ: {formatar_orcamento(linha.get(col_orc))}" if col_orc else ""
                                     parc_v = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
                                     valor_v = formatar_moeda(linha[col_valor])
                                     
-                                    c1.write(f"📌 **{cliente_n}** | ORÇ: {orc_v}{parc_v} | {valor_v} | Venc: {data_f}")
+                                    c1.write(f"📌 **{cliente_n}**{t_orc}{parc_v} | {valor_v} | Venc: {data_f}")
                                     
                                     conteudo_ics = criar_lembrete_item(linha[col_data], cliente_n, linha[col_valor], linha.get(col_orc))
                                     c2.download_button(
