@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from docx import Document
-import uuid # Necessário para o botão "Me Lembre"
+import uuid
 
 # 1. CONFIGURAÇÕES DA PÁGINA
 st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
@@ -26,7 +26,6 @@ def formatar_moeda(valor):
 def criar_lembrete_item(data_venc, cliente, valor, orc):
     if pd.isnull(data_venc): return None
     
-    # Define o alerta para as 10:00 da manhã
     dtstart = data_venc.strftime("%Y%m%d") + "T100000"
     dtend = data_venc.strftime("%Y%m%d") + "T103000"
     
@@ -63,12 +62,10 @@ if arquivos_enviados:
                 try:
                     df = pd.read_excel(arquivo)
                     
-                    # Auto-detecção de cabeçalho
                     if any("Unnamed" in str(c) for c in df.columns):
                         for idx, row in df.head(15).iterrows():
                             linha_texto = " ".join([str(x).lower() for x in row.values])
                             if any(k in linha_texto for k in ['valor', 'r$', 'data', 'venc', 'cliente', 'item', 'patrimônio', 'empresa']):
-                                # Cria nomes únicos para evitar erros
                                 nomes_limpos = []
                                 for i, c in enumerate(row.values):
                                     nome = str(c).strip() if pd.notna(c) and str(c).strip() != "" else f"vazio_{i}"
@@ -82,7 +79,6 @@ if arquivos_enviados:
                     df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
                     cols_limpas = {str(c).lower().strip(): c for c in df.columns}
 
-                    # Identificação Inteligente do Objetivo
                     is_financeiro = any(k in str(cols_limpas.keys()) for k in ['vencimento', 'data']) and any(k in str(cols_limpas.keys()) for k in ['valor', 'r$'])
                     
                     if is_financeiro:
@@ -95,11 +91,9 @@ if arquivos_enviados:
                         col_parcela = next((v for k, v in cols_limpas.items() if 'parcela' in k), None)
                         col_status = next((v for k, v in cols_limpas.items() if 'obs' in k or 'status' in k or 'situa' in k), None)
                         
-                        # Prepara os dados matemáticos
                         df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
                         df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
                         
-                        # Filtro de Pagos
                         if col_status:
                             mask_pago = df[col_status].astype(str).str.lower().str.contains('pago')
                             df_pendente = df[~mask_pago].dropna(subset=[col_data])
@@ -112,10 +106,8 @@ if arquivos_enviados:
                         df_vencidos = df_pendente[df_pendente[col_data] < hoje].sort_values(by=col_data)
                         df_a_vencer = df_pendente[df_pendente[col_data] >= hoje].sort_values(by=col_data)
                         
-                        # Criação da Planilha Visual (Para exibição perfeita)
                         df_display = df_pendente.copy()
                         
-                        # O CÁLCULO AO VIVO DOS DIAS
                         df_display['Status Dinâmico (Dias)'] = df_display[col_data].apply(
                             lambda x: "S/D" if pd.isnull(x) else (
                                 "⚠️ VENCE HOJE" if (x - hoje).days == 0 
@@ -124,37 +116,61 @@ if arquivos_enviados:
                             )
                         )
                         
-                        # Remove a coluna de observação velha do Excel para não confundir
                         if col_status and col_status in df_display.columns:
                             df_display = df_display.drop(columns=[col_status])
                         
-                        # Formata Datas e Valores exclusivamente para a visualização
                         df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
                         df_display[col_valor] = df_display[col_valor].apply(formatar_moeda)
                         
                         tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Planilha Completa Formatada"])
                         
                         with tab_venc:
-                            st.markdown("#### Itens Pendentes (Lembrete individual disponível):")
+                            st.markdown("**Itens já vencidos:**")
+                            st.write("")
+                            if not df_vencidos.empty:
+                                for _, linha in df_vencidos.iterrows():
+                                    data_f = linha[col_data].strftime('%d/%m/%Y')
+                                    c_nome = linha.get(col_cliente, 'S/N')
+                                    t_orc = f", ORÇ: {int(linha[col_orc]) if pd.notnull(linha[col_orc]) else 'S/N'}" if col_orc else ""
+                                    t_parc = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
+                                    st.write(f"{c_nome}{t_orc}{t_parc}, {formatar_moeda(linha[col_valor])}, {data_f}")
+                                
+                                st.write("")
+                                st.markdown(f"**Subtotal: {formatar_moeda(df_vencidos[col_valor].sum())};**")
+                            else:
+                                st.success("Nenhum item vencido.")
+                                st.markdown(f"**Subtotal: R$ 0,00;**")
+                            
+                            st.write("")
+                            st.write("")
+                            st.markdown(f"**Itens a vencer: {len(df_a_vencer)} (Subtotal: {formatar_moeda(df_a_vencer[col_valor].sum())});**")
+                            st.write("")
+                            st.write("")
+                            st.markdown(f"**Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())};**")
+                            st.write("")
                             st.write("")
                             
-                            # Combina vencidos e a vencer para criar a lista com botões
-                            todos_pendentes = pd.concat([df_vencidos, df_a_vencer])
-                            
-                            if not todos_pendentes.empty:
-                                for _, linha in todos_pendentes.iterrows():
+                            if not df_a_vencer.empty:
+                                st.markdown("#### Próximos Vencimentos em Destaque (Lembrete disponível):")
+                                st.write("")
+                                
+                                # Extrai as duas datas únicas mais próximas
+                                datas_unicas = df_a_vencer[col_data].dt.date.unique()
+                                duas_proximas_datas = datas_unicas[:2] if len(datas_unicas) >= 2 else datas_unicas
+                                
+                                # Filtra apenas os itens dessas duas datas
+                                df_proximos = df_a_vencer[df_a_vencer[col_data].dt.date.isin(duas_proximas_datas)]
+                                
+                                for _, linha in df_proximos.iterrows():
                                     c1, c2 = st.columns([0.85, 0.15])
-                                    
                                     data_f = linha[col_data].strftime('%d/%m/%Y')
                                     cliente_n = linha.get(col_cliente, 'S/N')
                                     orc_v = linha.get(col_orc, 'S/N')
                                     parc_v = f", {linha[col_parcela]}" if col_parcela and pd.notnull(linha[col_parcela]) else ""
                                     valor_v = formatar_moeda(linha[col_valor])
                                     
-                                    # Exibição do item
                                     c1.write(f"📌 **{cliente_n}** | ORÇ: {orc_v}{parc_v} | {valor_v} | Venc: {data_f}")
                                     
-                                    # Botão Mágico
                                     conteudo_ics = criar_lembrete_item(linha[col_data], cliente_n, linha[col_valor], orc_v)
                                     c2.download_button(
                                         label="🔔 Me lembre",
@@ -163,11 +179,6 @@ if arquivos_enviados:
                                         mime="text/calendar",
                                         key=str(uuid.uuid4())
                                     )
-                                
-                                st.markdown("---")
-                                st.write(f"**Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())}**")
-                            else:
-                                st.success("Nenhum item pendente detectado.")
 
                         with tab_dados:
                             st.dataframe(df_display, use_container_width=True)
@@ -176,7 +187,6 @@ if arquivos_enviados:
                         st.success("🎯 **Objetivo Detectado:** Controle de Patrimônio / Inventário. O sistema está focado em auditar a integridade dos dados, contar peças e identificar lacunas de informação.")
                         
                         df_display = df.copy()
-                        # Formata qualquer coluna que pareça data no patrimônio para dd/mm/aaaa
                         for col in df_display.select_dtypes(include=['datetime', 'datetimetz']).columns:
                             df_display[col] = df_display[col].dt.strftime('%d/%m/%Y')
                         
