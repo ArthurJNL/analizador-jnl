@@ -6,8 +6,8 @@ from docx import Document
 # 1. CONFIGURAÇÕES DA PÁGINA
 st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ ANALIZADOR INTEGRADO JNL")
-st.write("Análise inteligente e ao vivo de Faturamento, Patrimônio e Catálogos.")
+st.title("🛡️ ANALIZADOR JNL")
+st.write("Análise inteligente e ao vivo.")
 
 arquivos_enviados = st.file_uploader("Arraste seus arquivos aqui", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
 
@@ -188,7 +188,7 @@ if arquivos_enviados:
                     else:
                         st.warning("Nenhum item encontrado com esse termo.")
                 else:
-                    st.write("Digite algo acima para filtrar o catálogo.")
+                    st.write("Digite algo acima para filtrar.")
 
 else:
     st.info("Aguardando o envio de documentos para iniciar as operações.")
