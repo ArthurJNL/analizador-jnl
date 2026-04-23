@@ -10,6 +10,16 @@ st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wid
 st.title("🛡️ ANALIZADOR JNL")
 st.write("Análise inteligente e ao vivo.")
 
+# --- BARRA LATERAL DE CONFIGURAÇÕES ---
+st.sidebar.header("⚙️ Configurações de Controle")
+estoque_minimo = st.sidebar.slider(
+    "Definir estoque mínimo para alerta", 
+    min_value=0, 
+    max_value=50, 
+    value=2,
+    help="Itens com quantidade igual ou menor a este valor aparecerão no alerta de reposição."
+)
+
 arquivos_enviados = st.file_uploader("Arraste seus arquivos aqui", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
 
 st.markdown("---")
@@ -86,7 +96,6 @@ if arquivos_enviados:
                 try:
                     df = pd.read_excel(arquivo)
                     
-                    # Limpeza de cabeçalhos
                     if any("Unnamed" in str(c) for c in df.columns):
                         for idx, row in df.head(15).iterrows():
                             linha_texto = " ".join([str(x).lower() for x in row.values])
@@ -103,12 +112,11 @@ if arquivos_enviados:
                     df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
                     cols_limpas = {str(c).lower().strip(): c for c in df.columns}
 
-                    # Identificação de Tipo de Planilha
                     is_financeiro = any(k in str(cols_limpas.keys()) for k in ['vencimento', 'data']) and any(k in str(cols_limpas.keys()) for k in ['valor', 'r$'])
 
                     # --- FLUXO 1: FINANCEIRO ---
                     if is_financeiro:
-                        st.info("🎯 **Objetivo Detectado:** Controle Financeiro / Contas a Receber.")
+                        st.info("🎯 **Objetivo Detectado:** Controle Financeiro.")
                         col_data = next((v for k, v in cols_limpas.items() if 'vencimento' in k or 'data' in k), None)
                         col_valor = next((v for k, v in cols_limpas.items() if 'valor' in k or 'r$' in k), None)
                         col_cliente = next((v for k, v in cols_limpas.items() if 'cliente' in k or 'nome' in k or 'empresa' in k), "S/N")
@@ -135,24 +143,27 @@ if arquivos_enviados:
                         with tab_dados:
                             st.dataframe(df, use_container_width=True)
 
-                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (ATUALIZADO) ---
+                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (COM SLIDER) ---
                     else:
-                        st.warning("🎯 **Objetivo Detectado:** Controle de Patrimônio / Inventário. O sistema está monitorando a quantidade de itens e localização.")
+                        st.warning(f"🎯 **Objetivo Detectado:** Inventário. (Alerta configurado para: ≤ {estoque_minimo} unidades)")
                         
-                        # Mapeamento Inteligente de Colunas
                         col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quantidade', 'saldo', 'estoque'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome'])), None)
                         col_marca = next((v for k, v in cols_limpas.items() if 'marca' in k or 'fabricante' in k), None)
                         col_prat = next((v for k, v in cols_limpas.items() if 'prateleira' in k or 'local' in k), None)
                         col_obs = next((v for k, v in cols_limpas.items() if 'obs' in k or 'coment' in k), None)
 
-                        # Verificação de Alertas Críticos (≤ 2 unidades)
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
-                            df_critico = df[df[col_qtd] <= 2].sort_values(by=col_qtd)
+                            # AQUI USAMOS A VARIÁVEL DA BARRINHA
+                            df_critico = df[df[col_qtd] <= estoque_minimo].sort_values(by=col_qtd)
                             
+                            col_m1, col_m2 = st.columns(2)
+                            col_m1.metric("Total de Itens", len(df))
+                            col_m2.metric(f"Itens em Nível Crítico (≤ {estoque_minimo})", len(df_critico))
+
                             if not df_critico.empty:
-                                st.error(f"🚨 **ALERTA DE REPOSIÇÃO: {len(df_critico)} itens com estoque baixo!**")
+                                st.error(f"🚨 **ALERTA DE REPOSIÇÃO: {len(df_critico)} itens precisam de atenção!**")
                                 for _, linha in df_critico.iterrows():
                                     c1, c2 = st.columns([0.85, 0.15])
                                     item_nome = linha[col_desc]
@@ -161,26 +172,16 @@ if arquivos_enviados:
                                     conteudo_ics_estoque = criar_lembrete_estoque(item_nome, saldo)
                                     c2.download_button(label="🔔 Repor", data=conteudo_ics_estoque, file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
                             else:
-                                st.success("✅ Todos os itens do patrimônio estão com saldo acima de 2 unidades.")
+                                st.success(f"✅ Todos os itens estão com saldo acima de {estoque_minimo} unidades.")
 
-                        # Arrumando a Planilha para exibição limitada
                         st.write("---")
-                        st.write("**Tabela de Controle (Filtro Especial):**")
-                        
-                        # Definindo as colunas que devem ser mostradas (apenas se existirem no arquivo)
+                        st.write("**Tabela de Controle Filtrada:**")
                         colunas_desejadas = [c for c in [col_qtd, col_desc, col_marca, col_prat, col_obs] if c]
                         
                         if colunas_desejadas:
                             df_filtrado = df[colunas_desejadas].copy()
-                            # Renomeando para ficar padrão na visualização
-                            nomes_exibicao = {}
-                            if col_qtd: nomes_exibicao[col_qtd] = "QUANTIDADE"
-                            if col_desc: nomes_exibicao[col_desc] = "DESCRIÇÃO"
-                            if col_marca: nomes_exibicao[col_marca] = "MARCA"
-                            if col_prat: nomes_exibicao[col_prat] = "PRATELEIRA"
-                            if col_obs: nomes_exibicao[col_obs] = "OBSERVAÇÕES"
-                            
-                            df_filtrado.rename(columns=nomes_exibicao, inplace=True)
+                            nomes_exibicao = {col_qtd: "QUANTIDADE", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
+                            df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns}, inplace=True)
                             st.dataframe(df_filtrado, use_container_width=True)
                         else:
                             st.dataframe(df, use_container_width=True)
@@ -188,7 +189,6 @@ if arquivos_enviados:
                 except Exception as e:
                     st.error(f"Erro na planilha: {e}")
 
-            # --- CASO 2: DOCUMENTOS (WORD OU TXT) ---
             elif extensao in ['docx', 'txt']:
                 st.info("🎯 **Objetivo Detectado:** Catálogo / Documentação.")
                 conteudo = [p.text for p in Document(arquivo).paragraphs] if extensao == 'docx' else arquivo.read().decode("utf-8").splitlines()
