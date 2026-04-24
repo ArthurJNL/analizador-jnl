@@ -37,10 +37,8 @@ st.markdown("""
         font-family: 'Inter', sans-serif; 
     }
     
-    /* Fundo leve para destacar elementos brancos */
     .stApp { background-color: #F8F9FA; }
     
-    /* Caixas de input arredondadas */
     .stTextInput input {
         border-radius: 8px !important; 
         border: 1px solid #D0D5DD !important; 
@@ -50,7 +48,6 @@ st.markdown("""
         box-shadow: 0 0 0 1px #111111 !important;
     }
     
-    /* Esconder marcas do Streamlit */
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -87,7 +84,7 @@ def formatar_orcamento(valor):
     except: return str(valor).strip()
 
 # ==========================================
-# MOTORES DE RELATÓRIO PDF (INTELIGÊNCIA DINÂMICA)
+# MOTORES DE RELATÓRIO PDF
 # ==========================================
 def limpar_texto(t):
     import unicodedata
@@ -198,10 +195,8 @@ if FPDF is not None:
         pdf.set_font("Arial", 'B', 9)
         widths = [20, 120, 50]
         
-        if tipo == "financeiro":
-            colunas = ["POS.", "RAZAO SOCIAL / DESCRICAO", "VALOR TOTAL"]
-        else:
-            colunas = ["POS.", "ITEM / DESCRICAO", "QUANTIDADE EM ESTOQUE"]
+        if tipo == "financeiro": colunas = ["POS.", "RAZAO SOCIAL / DESCRICAO", "VALOR TOTAL"]
+        else: colunas = ["POS.", "ITEM / DESCRICAO", "QUANTIDADE EM ESTOQUE"]
             
         for i, col in enumerate(colunas):
             pdf.cell(widths[i], 8, col, border=1, fill=True, align='C')
@@ -218,21 +213,16 @@ if FPDF is not None:
         for i, row in df_ord.iterrows():
             pos = f"{i + 1}."
             nome = limpar_texto(row[col_nome]) 
-            
-            if tipo == "financeiro":
-                valor = f"R$ {row[col_valor]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            else:
-                valor = f"{int(row[col_valor])} un."
+            if tipo == "financeiro": valor = f"R$ {row[col_valor]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            else: valor = f"{int(row[col_valor])} un."
                 
             linha_dados = [pos, nome, valor]
-            
             max_linhas = 1
             for j, item in enumerate(linha_dados):
                 w_util = widths[j] - 2
                 w_texto = pdf.get_string_width(item)
                 linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
-                if linhas > max_linhas:
-                    max_linhas = linhas
+                if linhas > max_linhas: max_linhas = linhas
                     
             h_linha = (max_linhas * line_height) + 2
             
@@ -241,8 +231,7 @@ if FPDF is not None:
                 pdf.set_fill_color(17, 17, 17)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_font("Arial", 'B', 9)
-                for j, col in enumerate(colunas):
-                    pdf.cell(widths[j], 8, col, border=1, fill=True, align='C')
+                for j, col in enumerate(colunas): pdf.cell(widths[j], 8, col, border=1, fill=True, align='C')
                 pdf.ln()
                 pdf.set_text_color(26, 28, 30)
                 pdf.set_font("Arial", '', 8)
@@ -254,10 +243,8 @@ if FPDF is not None:
                 w = widths[j]
                 x = start_x + sum(widths[:j])
                 y = start_y
-                
                 pdf.rect(x, y, w, h_linha, 'D')
                 pdf.set_xy(x, y + 1)
-                
                 align = 'C' if j == 0 else ('L' if j == 1 else 'R')
                 pdf.multi_cell(w, line_height, item, border=0, align=align)
                 
@@ -365,7 +352,6 @@ if arquivos_enviados:
 
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
-                            
                             col_m1, col_m2, col_m3 = st.columns(3)
                             
                             if col_minimo:
@@ -383,7 +369,6 @@ if arquivos_enviados:
                                         item_nome = linha[col_desc]
                                         saldo = int(linha[col_qtd])
                                         minimo_item = int(linha[col_minimo])
-                                        
                                         c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')}")
                                         c2.download_button(label="🔔 Repor", data=criar_lembrete_estoque(item_nome, saldo, minimo_item), file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
                             else:
@@ -402,10 +387,25 @@ if arquivos_enviados:
                                 mask_est = df_filtrado.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
                                 df_filtrado = df_filtrado[mask_est]
                             
-                            aba_visu, aba_tab = st.tabs(["📊 Distribuição de Estoque", "📋 Base de Dados Operacional"])
+                            # 💡 ABAS INVERTIDAS: Tabela primeiro, Gráfico depois!
+                            aba_tab, aba_visu = st.tabs(["📋 Base de Dados Operacional", "📊 Distribuição de Estoque"])
                             
+                            with aba_tab:
+                                titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
+                                nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
+                                df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
+                                
+                                col_t1, col_t2 = st.columns([0.8, 0.2])
+                                with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
+                                with col_t2:
+                                    if FPDF is not None and not df_tabela.empty:
+                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_tabela(df_tabela, titulo_tab_est), file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
+                                    elif FPDF is None:
+                                        st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
+
+                                st.dataframe(df_tabela, use_container_width=True)
+
                             with aba_visu:
-                                # 💡 MÁGICA DA OTIMIZAÇÃO: Toggle para esconder/mostrar o gráfico, desativado por padrão
                                 mostrar_grafico = st.toggle("Exibir Gráfico de Volumetria", value=False, key=f"tgl_graf_{arquivo.name}")
                                 
                                 if mostrar_grafico:
@@ -417,6 +417,8 @@ if arquivos_enviados:
                                     with col_g2:
                                         if FPDF is not None and not dados_grafico.empty:
                                             st.download_button(label="📄 Baixar PDF", data=gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque"), file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
+                                        elif FPDF is None:
+                                            st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
 
                                     if not df_filtrado.empty and st_echarts is not None:
                                         dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
@@ -435,19 +437,6 @@ if arquivos_enviados:
                                         st_echarts(options=bar_options, height=f"{altura_dinamica}px")
                                 else:
                                     st.info("📊 O gráfico está desativado para otimizar o desempenho. Clique no interruptor acima para visualizá-lo.")
-
-                            with aba_tab:
-                                titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
-                                nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
-                                df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
-                                
-                                col_t1, col_t2 = st.columns([0.8, 0.2])
-                                with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
-                                with col_t2:
-                                    if FPDF is not None and not df_tabela.empty:
-                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_tabela(df_tabela, titulo_tab_est), file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
-
-                                st.dataframe(df_tabela, use_container_width=True)
 
                 except Exception as e:
                     st.error(f"Erro no processamento do arquivo: {e}")
