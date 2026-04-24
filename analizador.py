@@ -28,104 +28,29 @@ except ImportError:
 # 1. CONFIGURAÇÕES DA PÁGINA
 st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
 
-# --- DESIGN AGRESSIVO PREMIUM SAAS (AGENTOPS STYLE) ---
+# --- DESIGN ESTÁVEL E MINIMALISTA ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
-    html, body, [class*="css"], * { 
-        font-family: 'Plus Jakarta Sans', sans-serif !important; 
+    html, body, [class*="css"] { 
+        font-family: 'Inter', sans-serif; 
     }
     
-    .stApp { background-color: #F8FAFC; }
+    /* Fundo leve para destacar elementos brancos */
+    .stApp { background-color: #F8F9FA; }
     
-    [data-testid="stSidebar"] { 
-        background-color: #FFFFFF; 
-        border-right: 1px solid #E2E8F0; 
-    }
-    
-    h1, h2, h3 { color: #0F172A !important; font-weight: 700 !important; letter-spacing: -0.02em; }
-    p { color: #475569; }
-    
-    [data-testid="stMetric"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 16px !important;
-        padding: 20px 24px !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #64748B !important;
-        font-size: 0.85rem !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.05em !important;
-        margin-bottom: 8px !important;
-    }
-    [data-testid="stMetricValue"] {
-        color: #0F172A !important;
-        font-size: 2.2rem !important;
-        font-weight: 800 !important;
-        line-height: 1.1 !important;
-    }
-    
-    .echarts-container, [data-testid="stDataFrame"], [data-testid="stExpander"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 16px !important;
-        padding: 16px !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
-    }
-
+    /* Caixas de input arredondadas */
     .stTextInput input {
-        border-radius: 12px !important; 
-        border: 1px solid #CBD5E1 !important; 
-        padding: 14px 20px !important;
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        font-weight: 500 !important;
-        font-size: 1rem !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        border-radius: 8px !important; 
+        border: 1px solid #D0D5DD !important; 
     }
     .stTextInput input:focus {
-        border-color: #0F172A !important; 
-        box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.2) !important;
+        border-color: #111111 !important; 
+        box-shadow: 0 0 0 1px #111111 !important;
     }
     
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #E2E8F0;
-        padding: 6px;
-        border-radius: 12px;
-        border-bottom: none !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: transparent;
-        border-radius: 8px;
-        border: none !important;
-        padding: 10px 20px;
-        color: #64748B;
-        font-weight: 600;
-        font-size: 0.95rem;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06) !important;
-    }
-    
-    .stDownloadButton button {
-        background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 10px !important;
-        color: #0F172A !important;
-        font-weight: 600 !important;
-    }
-    .stDownloadButton button:hover {
-        border-color: #0F172A !important;
-        background-color: #F8FAFC !important;
-    }
-
+    /* Esconder marcas do Streamlit */
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -134,7 +59,7 @@ st.markdown("""
 
 st.title("🛡️ ANALIZADOR JNL")
 st.write("Análise inteligente e controle operacional.")
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("---")
 
 # --- MOTOR DE PESQUISA INTELIGENTE (KEYUP) ---
 def campo_pesquisa(label, placeholder, key):
@@ -147,7 +72,7 @@ def campo_pesquisa(label, placeholder, key):
 with st.sidebar:
     st.header("⚙️ Operação")
     st.markdown("---")
-    arquivos_enviados = st.file_uploader("Arraste seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
+    arquivos_enviados = st.file_uploader("Arraste seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt", "csv"], accept_multiple_files=True)
 
 def formatar_moeda(valor):
     try:
@@ -413,7 +338,7 @@ if arquivos_enviados:
 
                         tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Base de Dados"])
                         with tab_venc:
-                            st.markdown(f"<h3 style='color: #0F172A;'>Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())}</h3>", unsafe_allow_html=True)
+                            st.markdown(f"### Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())}")
                             for _, linha in df_a_vencer.head(10).iterrows():
                                 c1, c2 = st.columns([0.85, 0.15])
                                 c1.write(f"📌 **{linha.get(col_cliente, 'S/N')}** | {formatar_moeda(linha[col_valor])} | Venc: {linha[col_data].strftime('%d/%m/%Y')}")
@@ -421,14 +346,13 @@ if arquivos_enviados:
                         
                         with tab_dados:
                             busca_fin = campo_pesquisa("🔍 Pesquisar no Financeiro", "Digite cliente, nota ou valor para filtrar instantaneamente...", key=f"bf_{arquivo.name}")
-                            st.markdown("<br>", unsafe_allow_html=True)
                             df_view = df.copy()
                             if busca_fin:
                                 mask_fin = df_view.astype(str).apply(lambda x: x.str.contains(busca_fin, case=False, na=False)).any(axis=1)
                                 df_view = df_view[mask_fin]
                             st.dataframe(df_view, use_container_width=True)
 
-                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (COM GRÁFICO SAAS E DOWNLOADS DE PDF) ---
+                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO ---
                     else:
                         st.info("🎯 **Módulo de Logística e Inventário Ativado**")
                         
@@ -442,7 +366,6 @@ if arquivos_enviados:
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
                             
-                            st.markdown("<br>", unsafe_allow_html=True)
                             col_m1, col_m2, col_m3 = st.columns(3)
                             
                             if col_minimo:
@@ -454,7 +377,6 @@ if arquivos_enviados:
                                 col_m3.metric("🚨 Nível Crítico", len(df_critico))
 
                                 if not df_critico.empty:
-                                    st.markdown("<br>", unsafe_allow_html=True)
                                     st.error(f"**Atenção:** {len(df_critico)} SKUs atingiram a cota mínima de reposição.")
                                     for _, linha in df_critico.iterrows():
                                         c1, c2 = st.columns([0.85, 0.15])
@@ -469,10 +391,8 @@ if arquivos_enviados:
                                 col_m2.metric("Volume Operacional", f"{int(df[col_qtd].sum())} un.")
                                 st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não detectada no arquivo.")
 
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
+                        st.write("---")
                         busca_est = campo_pesquisa("🔍 Filtro Operacional", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
-                        st.markdown("<br>", unsafe_allow_html=True)
                         
                         colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
                         
@@ -486,52 +406,40 @@ if arquivos_enviados:
                             
                             with aba_visu:
                                 titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"Volumetria de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
-                                
                                 dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
                                 
                                 col_g1, col_g2 = st.columns([0.8, 0.2])
-                                with col_g1:
-                                    st.write("💡 *Visualize a disponibilidade por SKU. Baixe em PNG (Câmera) ou gere o PDF de Ranking.*")
+                                with col_g1: st.write("💡 *Baixe o gráfico em PNG pela câmera ou gere um relatório em PDF.*")
                                 with col_g2:
                                     if FPDF is not None and not dados_grafico.empty:
-                                        pdf_rk_bytes = gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque")
-                                        st.download_button(label="📄 Baixar em PDF", data=pdf_rk_bytes, file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
+                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque"), file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
 
                                 if not df_filtrado.empty and st_echarts is not None:
-                                    dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#0F172A", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
+                                    dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
                                     altura_dinamica = max(500, len(dados_grafico) * 45)
                                     
                                     bar_options = {
                                         "backgroundColor": "transparent",
-                                        "title": {"text": "Volumetria por SKU", "left": "center", "textStyle": {"color": "#0F172A", "fontSize": 16, "fontFamily": "Plus Jakarta Sans"}},
+                                        "title": {"text": "Volumetria por SKU", "left": "center", "textStyle": {"color": "#111111", "fontSize": 16, "fontFamily": "Inter"}},
                                         "toolbox": {"feature": {"saveAsImage": {"show": True, "title": "Baixar PNG", "pixelRatio": 2}}},
                                         "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
                                         "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
                                         "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
-                                        "yAxis": {
-                                            "type": "category", 
-                                            "data": dados_grafico[col_desc].tolist(), 
-                                            "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#475569"}
-                                        },
-                                        "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#0F172A", "borderRadius": [0, 6, 6, 0]}}]
+                                        "yAxis": {"type": "category", "data": dados_grafico[col_desc].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
+                                        "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#111111", "borderRadius": [0, 6, 6, 0]}}]
                                     }
                                     st_echarts(options=bar_options, height=f"{altura_dinamica}px")
-                                else:
-                                    st.info("Nenhum dado encontrado para gerar o gráfico.")
 
                             with aba_tab:
                                 titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
-                                
                                 nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
                                 df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
                                 
                                 col_t1, col_t2 = st.columns([0.8, 0.2])
-                                with col_t1:
-                                    st.write("💡 *Base de dados filtrada e pronta para exportação formal.*")
+                                with col_t1: st.write("💡 *Exporte a tabela completa estruturada para PDF.*")
                                 with col_t2:
                                     if FPDF is not None and not df_tabela.empty:
-                                        pdf_tb_bytes = gerar_pdf_tabela(df_tabela, titulo_tab_est)
-                                        st.download_button(label="📄 Baixar em PDF", data=pdf_tb_bytes, file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
+                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_tabela(df_tabela, titulo_tab_est), file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
 
                                 st.dataframe(df_tabela, use_container_width=True)
 
@@ -544,15 +452,11 @@ if arquivos_enviados:
                     st.error("Biblioteca 'python-docx' ausente no servidor.")
                 else:
                     conteudo = [p.text for p in Document(arquivo).paragraphs] if extensao == 'docx' else arquivo.read().decode("utf-8").splitlines()
-                    
                     busca = campo_pesquisa(f"🔍 Busca Dinâmica", "Pesquise palavras-chave no documento...", key=f"bd_{arquivo.name}")
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    
                     if busca:
                         resultados = [l for l in conteudo if busca.lower() in l.lower()]
                         if resultados:
-                            for r in resultados: 
-                                st.write(f"🔹 {r}")
+                            for r in resultados: st.write(f"🔹 {r}")
                         else:
                             st.warning("Nenhum trecho correspondente encontrado.")
 
