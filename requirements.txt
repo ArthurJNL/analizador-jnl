@@ -1,4 +1,6 @@
 # ID-SEC: [JNL-MVP-NUVEM-ANALIZADOR]
+streamlit
 pandas
 openpyxl
 python-docx
+st-keyup
