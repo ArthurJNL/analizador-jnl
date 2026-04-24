@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import math
 import uuid
 
 # --- MOTORES EXTERNOS ---
@@ -19,72 +20,121 @@ try:
 except ImportError:
     st_echarts = None
 
+try:
+    from fpdf import FPDF
+except ImportError:
+    FPDF = None
+
 # 1. CONFIGURAÇÕES DA PÁGINA
 st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
 
-# --- DESIGN PREMIUM SAAS (Inspirado no AgentOps) ---
+# --- DESIGN AGRESSIVO PREMIUM SAAS (AGENTOPS STYLE) ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
-    html, body, [class*="css"] { 
-        font-family: 'Plus Jakarta Sans', sans-serif; 
+    html, body, [class*="css"], * { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
     }
     
-    /* Fundo da Tela (Cinza/Azulado muito suave) */
-    .main { 
-        background-color: #F7F9FC; 
-    }
+    .stApp { background-color: #F8FAFC; }
     
-    /* Barra Lateral Branca e Limpa */
     [data-testid="stSidebar"] { 
         background-color: #FFFFFF; 
         border-right: 1px solid #E2E8F0; 
     }
     
-    /* Cartões Flutuantes (SaaS Style) */
-    .stMetric, .echarts-container, [data-testid="stDataFrame"] {
-        background: #FFFFFF !important;
+    h1, h2, h3 { color: #0F172A !important; font-weight: 700 !important; letter-spacing: -0.02em; }
+    p { color: #475569; }
+    
+    [data-testid="stMetric"] {
+        background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 16px !important;
-        padding: 15px !important;
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.03) !important;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        padding: 20px 24px !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #64748B !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+        margin-bottom: 8px !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: #0F172A !important;
+        font-size: 2.2rem !important;
+        font-weight: 800 !important;
+        line-height: 1.1 !important;
     }
     
-    .stMetric:hover {
-        box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.06) !important;
-        transform: translateY(-2px);
+    .echarts-container, [data-testid="stDataFrame"], [data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 16px !important;
+        padding: 16px !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
     }
 
-    /* Caixas de Texto (Pesquisa) */
-    .stTextInput > div > div > input {
-        border-radius: 10px; 
-        border: 1px solid #CBD5E1; 
-        padding: 12px 16px;
-        background-color: #FFFFFF;
-        box-shadow: 0px 2px 4px rgba(0,0,0,0.02);
+    .stTextInput input {
+        border-radius: 12px !important; 
+        border: 1px solid #CBD5E1 !important; 
+        padding: 14px 20px !important;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        font-weight: 500 !important;
+        font-size: 1rem !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
     }
-    .stTextInput > div > div > input:focus {
-        border-color: #0F172A; 
-        box-shadow: 0 0 0 1px #0F172A;
+    .stTextInput input:focus {
+        border-color: #0F172A !important; 
+        box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.2) !important;
     }
     
-    /* Abas Modernas (Tabs) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 20px;
+        gap: 8px;
+        background-color: #E2E8F0;
+        padding: 6px;
+        border-radius: 12px;
+        border-bottom: none !important;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 10px 15px;
-        border-radius: 8px 8px 0px 0px;
+        background-color: transparent;
+        border-radius: 8px;
+        border: none !important;
+        padding: 10px 20px;
+        color: #64748B;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06) !important;
     }
     
+    .stDownloadButton button {
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 10px !important;
+        color: #0F172A !important;
+        font-weight: 600 !important;
+    }
+    .stDownloadButton button:hover {
+        border-color: #0F172A !important;
+        background-color: #F8FAFC !important;
+    }
+
     .stDeployButton {display:none;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🛡️ ANALIZADOR JNL")
 st.write("Análise inteligente e controle operacional.")
+st.markdown("<br>", unsafe_allow_html=True)
 
 # --- MOTOR DE PESQUISA INTELIGENTE (KEYUP) ---
 def campo_pesquisa(label, placeholder, key):
@@ -94,10 +144,10 @@ def campo_pesquisa(label, placeholder, key):
         return st.text_input(label, placeholder=placeholder, key=key)
 
 # --- BARRA LATERAL ---
-st.sidebar.header("⚙️ Configurações")
-arquivos_enviados = st.sidebar.file_uploader("Arraste seus arquivos aqui", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
-
-st.markdown("---")
+with st.sidebar:
+    st.header("⚙️ Operação")
+    st.markdown("---")
+    arquivos_enviados = st.file_uploader("Arraste seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt"], accept_multiple_files=True)
 
 def formatar_moeda(valor):
     try:
@@ -108,55 +158,208 @@ def formatar_moeda(valor):
 def formatar_orcamento(valor):
     if pd.isna(valor) or str(valor).strip() == "" or str(valor).strip().upper() in ["S/N", "NAN", "NONE"]:
         return "S/N"
-    try:
-        return str(int(float(valor)))
-    except (ValueError, TypeError):
-        return str(valor).strip()
+    try: return str(int(float(valor)))
+    except: return str(valor).strip()
 
 # ==========================================
-# MOTOR DE AGENDA (ICS)
+# MOTORES DE RELATÓRIO PDF (INTELIGÊNCIA DINÂMICA)
+# ==========================================
+def limpar_texto(t):
+    import unicodedata
+    return unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8')
+
+if FPDF is not None:
+    class PDFReport(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 10)
+            self.cell(0, 10, 'ANALIZADOR JNL - Relatorio Oficial', 0, 1, 'C')
+            self.ln(2)
+        def footer(self):
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+
+    def obter_larguras_dinamicas(colunas):
+        page_width = 190
+        widths = []
+        for col in colunas:
+            c = col.upper()
+            if 'DESCRI' in c or 'RAZAO' in c or 'NOME' in c or 'ITEM' in c: widths.append(page_width * 0.35)
+            elif 'OBS' in c: widths.append(page_width * 0.25)
+            elif 'DATA' in c or 'SITUA' in c or 'MARCA' in c or 'LOCAL' in c or 'PRAT' in c: widths.append(page_width * 0.15)
+            elif 'QTD' in c or 'QUANTIDADE' in c or 'MIN' in c or 'MÍN' in c: widths.append(page_width * 0.1)
+            else: widths.append(page_width * 0.15)
+        
+        total = sum(widths)
+        return [w * (page_width / total) for w in widths]
+
+    def gerar_pdf_tabela(df, titulo):
+        pdf = PDFReport()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+        pdf.ln(5)
+        
+        colunas = list(df.columns)
+        widths = obter_larguras_dinamicas(colunas)
+            
+        pdf.set_fill_color(17, 17, 17)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", 'B', 9)
+        
+        for i, col in enumerate(colunas):
+            pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
+        pdf.ln()
+        
+        line_height = 5
+        pdf.set_font("Arial", '', 8)
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_text_color(26, 28, 30)
+        
+        for _, row in df.iterrows():
+            max_linhas = 1
+            for i, item in enumerate(row):
+                texto = limpar_texto(item)
+                w_util = widths[i] - 2
+                w_texto = pdf.get_string_width(texto)
+                linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                if linhas > max_linhas:
+                    max_linhas = linhas
+                    
+            h_linha = (max_linhas * line_height) + 2
+            
+            if pdf.get_y() + h_linha > 275:
+                pdf.add_page()
+                pdf.set_fill_color(17, 17, 17)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font("Arial", 'B', 9)
+                for i, col in enumerate(colunas):
+                    pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
+                pdf.ln()
+                pdf.set_font("Arial", '', 8)
+                pdf.set_fill_color(255, 255, 255)
+                pdf.set_text_color(26, 28, 30)
+                    
+            start_x = pdf.get_x()
+            start_y = pdf.get_y()
+            
+            for i, item in enumerate(row):
+                texto = limpar_texto(item)
+                w = widths[i]
+                x = start_x + sum(widths[:i])
+                y = start_y
+                
+                pdf.rect(x, y, w, h_linha, 'D')
+                pdf.set_xy(x, y + 1)
+                
+                align = 'L' if i == 0 else 'C'
+                pdf.multi_cell(w, line_height, texto, border=0, align=align)
+                
+            pdf.set_xy(start_x, start_y + h_linha)
+            
+        res = pdf.output(dest='S')
+        if isinstance(res, str): return res.encode('latin-1')
+        return bytes(res)
+
+    def gerar_pdf_ranking(df, titulo, tipo="estoque"):
+        pdf = PDFReport()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+        pdf.ln(5)
+        
+        pdf.set_fill_color(17, 17, 17)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", 'B', 9)
+        widths = [20, 120, 50]
+        
+        if tipo == "financeiro":
+            colunas = ["POS.", "RAZAO SOCIAL / DESCRICAO", "VALOR TOTAL"]
+        else:
+            colunas = ["POS.", "ITEM / DESCRICAO", "QUANTIDADE EM ESTOQUE"]
+            
+        for i, col in enumerate(colunas):
+            pdf.cell(widths[i], 8, col, border=1, fill=True, align='C')
+        pdf.ln()
+        
+        pdf.set_text_color(26, 28, 30)
+        pdf.set_font("Arial", '', 8)
+        line_height = 5
+        
+        col_nome = df.columns[0]
+        col_valor = df.columns[1]
+        df_ord = df.sort_values(by=col_valor, ascending=False).reset_index(drop=True)
+        
+        for i, row in df_ord.iterrows():
+            pos = f"{i + 1}."
+            nome = limpar_texto(row[col_nome]) 
+            
+            if tipo == "financeiro":
+                valor = f"R$ {row[col_valor]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            else:
+                valor = f"{int(row[col_valor])} un."
+                
+            linha_dados = [pos, nome, valor]
+            
+            max_linhas = 1
+            for j, item in enumerate(linha_dados):
+                w_util = widths[j] - 2
+                w_texto = pdf.get_string_width(item)
+                linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                if linhas > max_linhas:
+                    max_linhas = linhas
+                    
+            h_linha = (max_linhas * line_height) + 2
+            
+            if pdf.get_y() + h_linha > 275:
+                pdf.add_page()
+                pdf.set_fill_color(17, 17, 17)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font("Arial", 'B', 9)
+                for j, col in enumerate(colunas):
+                    pdf.cell(widths[j], 8, col, border=1, fill=True, align='C')
+                pdf.ln()
+                pdf.set_text_color(26, 28, 30)
+                pdf.set_font("Arial", '', 8)
+                
+            start_x = pdf.get_x()
+            start_y = pdf.get_y()
+            
+            for j, item in enumerate(linha_dados):
+                w = widths[j]
+                x = start_x + sum(widths[:j])
+                y = start_y
+                
+                pdf.rect(x, y, w, h_linha, 'D')
+                pdf.set_xy(x, y + 1)
+                
+                align = 'C' if j == 0 else ('L' if j == 1 else 'R')
+                pdf.multi_cell(w, line_height, item, border=0, align=align)
+                
+            pdf.set_xy(start_x, start_y + h_linha)
+            
+        res = pdf.output(dest='S')
+        if isinstance(res, str): return res.encode('latin-1')
+        return bytes(res)
+
+# ==========================================
+# AGENDA ICS
 # ==========================================
 def criar_lembrete_item(data_venc, cliente, valor, orc):
     if pd.isnull(data_venc): return None
     dtstart = data_venc.strftime("%Y%m%d") + "T100000"
     dtend = data_venc.strftime("%Y%m%d") + "T103000"
     cliente_limpo = str(cliente).replace("\n", " ")
-    valor_f = formatar_moeda(valor)
-    orc_f = formatar_orcamento(orc)
     uid = f"{uuid.uuid4()}@jnl.com"
-    
-    ics = (
-        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//JNL//Lembrete Financeiro//PT\n"
-        "BEGIN:VEVENT\n"
-        f"UID:{uid}\n"
-        f"DTSTART:{dtstart}\n"
-        f"DTEND:{dtend}\n"
-        f"SUMMARY:⚠️ COBRAR: {cliente_limpo} ({valor_f})\n"
-        f"DESCRIPTION:Lembrete JNL\\nOrçamento: {orc_f}\\nValor: {valor_f}\n"
-        "BEGIN:VALARM\nTRIGGER:-P1D\nACTION:DISPLAY\nDESCRIPTION:Vence Amanhã\nEND:VALARM\n"
-        "END:VEVENT\nEND:VCALENDAR"
-    )
-    return ics
+    return f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//JNL//Lembrete Financeiro//PT\nBEGIN:VEVENT\nUID:{uid}\nDTSTART:{dtstart}\nDTEND:{dtend}\nSUMMARY:⚠️ COBRAR: {cliente_limpo} ({formatar_moeda(valor)})\nDESCRIPTION:Lembrete JNL\\nOrçamento: {formatar_orcamento(orc)}\\nValor: {formatar_moeda(valor)}\nBEGIN:VALARM\nTRIGGER:-P1D\nACTION:DISPLAY\nDESCRIPTION:Vence Amanhã\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR"
 
-def criar_lembrete_estoque(item, qtd, minimo_exigido):
+def criar_lembrete_estoque(item, qtd, minimo):
     hoje = datetime.now()
     dtstart = hoje.strftime("%Y%m%d") + "T090000"
     dtend = hoje.strftime("%Y%m%d") + "T093000"
     item_limpo = str(item).replace("\n", " ")
     uid = f"{uuid.uuid4()}@jnl.com"
-    
-    ics = (
-        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//JNL//Lembrete Estoque//PT\n"
-        "BEGIN:VEVENT\n"
-        f"UID:{uid}\n"
-        f"DTSTART:{dtstart}\n"
-        f"DTEND:{dtend}\n"
-        f"SUMMARY:📦 REPOR ESTOQUE: {item_limpo}\n"
-        f"DESCRIPTION:Alerta JNL\\nO item '{item_limpo}' atingiu nível crítico.\\nSaldo Atual: {qtd} unidades\\nMínimo Exigido: {minimo_exigido} unidades\\nNecessário solicitar reposição imediatamente.\n"
-        "BEGIN:VALARM\nTRIGGER:-PT5M\nACTION:DISPLAY\nDESCRIPTION:Reposição de Estoque\nEND:VALARM\n"
-        "END:VEVENT\nEND:VCALENDAR"
-    )
-    return ics
+    return f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//JNL//Lembrete Estoque//PT\nBEGIN:VEVENT\nUID:{uid}\nDTSTART:{dtstart}\nDTEND:{dtend}\nSUMMARY:📦 REPOR ESTOQUE: {item_limpo}\nDESCRIPTION:Alerta JNL\\nO item '{item_limpo}' atingiu nível crítico.\\nSaldo Atual: {qtd} unidades\\nMínimo Exigido: {minimo} unidades\\nNecessário solicitar reposição imediatamente.\nBEGIN:VALARM\nTRIGGER:-PT5M\nACTION:DISPLAY\nDESCRIPTION:Reposição de Estoque\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR"
 
 # ==========================================
 # PROCESSAMENTO DE ARQUIVOS
@@ -165,11 +368,12 @@ if arquivos_enviados:
     for arquivo in arquivos_enviados:
         extensao = arquivo.name.split('.')[-1].lower()
         
-        with st.expander(f"📄 ARQUIVO: {arquivo.name.upper()}", expanded=True):
+        with st.expander(f"📄 DOCUMENTO ATIVO: {arquivo.name.upper()}", expanded=True):
             
-            if extensao in ['xlsx', 'xls', 'xlsm']:
+            if extensao in ['xlsx', 'xls', 'xlsm', 'csv']:
                 try:
-                    df = pd.read_excel(arquivo)
+                    if extensao == 'csv': df = pd.read_csv(arquivo, sep=None, engine='python')
+                    else: df = pd.read_excel(arquivo)
                     
                     if any("Unnamed" in str(c) for c in df.columns):
                         for idx, row in df.head(15).iterrows():
@@ -191,7 +395,7 @@ if arquivos_enviados:
 
                     # --- FLUXO 1: FINANCEIRO ---
                     if is_financeiro:
-                        st.info("🎯 **Objetivo Detectado:** Controle Financeiro.")
+                        st.info("🎯 **Módulo Financeiro Ativado**")
                         col_data = next((v for k, v in cols_limpas.items() if 'vencimento' in k or 'data' in k), None)
                         col_valor = next((v for k, v in cols_limpas.items() if 'valor' in k or 'r$' in k), None)
                         col_cliente = next((v for k, v in cols_limpas.items() if 'cliente' in k or 'nome' in k or 'empresa' in k), "S/N")
@@ -207,26 +411,26 @@ if arquivos_enviados:
                         hoje = pd.to_datetime('today').normalize()
                         df_a_vencer = df_pendente[df_pendente[col_data] >= hoje].sort_values(by=col_data)
 
-                        tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Planilha Completa"])
+                        tab_venc, tab_dados = st.tabs(["📅 Resumo Financeiro", "📋 Base de Dados"])
                         with tab_venc:
-                            st.markdown(f"**Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())}**")
+                            st.markdown(f"<h3 style='color: #0F172A;'>Valor total em aberto: {formatar_moeda(df_pendente[col_valor].sum())}</h3>", unsafe_allow_html=True)
                             for _, linha in df_a_vencer.head(10).iterrows():
                                 c1, c2 = st.columns([0.85, 0.15])
                                 c1.write(f"📌 **{linha.get(col_cliente, 'S/N')}** | {formatar_moeda(linha[col_valor])} | Venc: {linha[col_data].strftime('%d/%m/%Y')}")
-                                conteudo_ics = criar_lembrete_item(linha[col_data], linha.get(col_cliente, 'S/N'), linha[col_valor], linha.get(col_orc))
-                                c2.download_button("🔔 Me lembre", data=conteudo_ics, file_name="Lembrete.ics", key=str(uuid.uuid4()))
+                                c2.download_button("🔔 Lembrete", data=criar_lembrete_item(linha[col_data], linha.get(col_cliente, 'S/N'), linha[col_valor], linha.get(col_orc)), file_name="Lembrete.ics", key=str(uuid.uuid4()))
                         
                         with tab_dados:
-                            busca_fin = campo_pesquisa("🔍 Busca Dinâmica", "Digite cliente, nota ou valor para filtrar a tabela instantaneamente...", key=f"bf_{arquivo.name}")
+                            busca_fin = campo_pesquisa("🔍 Pesquisar no Financeiro", "Digite cliente, nota ou valor para filtrar instantaneamente...", key=f"bf_{arquivo.name}")
+                            st.markdown("<br>", unsafe_allow_html=True)
                             df_view = df.copy()
                             if busca_fin:
                                 mask_fin = df_view.astype(str).apply(lambda x: x.str.contains(busca_fin, case=False, na=False)).any(axis=1)
                                 df_view = df_view[mask_fin]
                             st.dataframe(df_view, use_container_width=True)
 
-                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (COM GRÁFICO SAAS) ---
+                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (COM GRÁFICO SAAS E DOWNLOADS DE PDF) ---
                     else:
-                        st.info("🎯 **Objetivo Detectado:** Inventário (Análise de Estoque e Ponto de Reposição).")
+                        st.info("🎯 **Módulo de Logística e Inventário Ativado**")
                         
                         col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quantidade', 'saldo', 'estoque'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome'])), None)
@@ -238,19 +442,20 @@ if arquivos_enviados:
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
                             
-                            # 💡 MÉTRICAS ESTILO SAAS (TOPO)
+                            st.markdown("<br>", unsafe_allow_html=True)
                             col_m1, col_m2, col_m3 = st.columns(3)
                             
                             if col_minimo:
                                 df[col_minimo] = pd.to_numeric(df[col_minimo], errors='coerce').fillna(0)
                                 df_critico = df[df[col_qtd] <= df[col_minimo]].sort_values(by=col_qtd)
                                 
-                                col_m1.metric("📦 Total de Itens", len(df))
-                                col_m2.metric("🔢 Volume em Estoque", f"{int(df[col_qtd].sum())} unid.")
-                                col_m3.metric("🚨 Itens em Nível Crítico", len(df_critico))
+                                col_m1.metric("SKUs Analisados", len(df))
+                                col_m2.metric("Volume Operacional", f"{int(df[col_qtd].sum())} un.")
+                                col_m3.metric("🚨 Nível Crítico", len(df_critico))
 
                                 if not df_critico.empty:
-                                    st.error(f"🚨 **ALERTA DE REPOSIÇÃO: {len(df_critico)} itens atingiram a sua cota mínima!**")
+                                    st.markdown("<br>", unsafe_allow_html=True)
+                                    st.error(f"**Atenção:** {len(df_critico)} SKUs atingiram a cota mínima de reposição.")
                                     for _, linha in df_critico.iterrows():
                                         c1, c2 = st.columns([0.85, 0.15])
                                         item_nome = linha[col_desc]
@@ -258,17 +463,16 @@ if arquivos_enviados:
                                         minimo_item = int(linha[col_minimo])
                                         
                                         c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')}")
-                                        conteudo_ics_estoque = criar_lembrete_estoque(item_nome, saldo, minimo_item)
-                                        c2.download_button(label="🔔 Repor", data=conteudo_ics_estoque, file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
+                                        c2.download_button(label="🔔 Repor", data=criar_lembrete_estoque(item_nome, saldo, minimo_item), file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
                             else:
-                                col_m1.metric("📦 Total de Itens Analisados", len(df))
-                                col_m2.metric("🔢 Volume Total em Estoque", f"{int(df[col_qtd].sum())} unid.")
-                                st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não encontrada para gerar alertas.")
+                                col_m1.metric("SKUs Analisados", len(df))
+                                col_m2.metric("Volume Operacional", f"{int(df[col_qtd].sum())} un.")
+                                st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não detectada no arquivo.")
 
-                        st.write("---")
+                        st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # 💡 CAMPO DE PESQUISA INTELIGENTE E SAAS
-                        busca_est = campo_pesquisa("🔍 Busca Dinâmica", "Pesquise por peça, marca ou local para filtrar o gráfico e a tabela...", key=f"be_{arquivo.name}")
+                        busca_est = campo_pesquisa("🔍 Filtro Operacional", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
+                        st.markdown("<br>", unsafe_allow_html=True)
                         
                         colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
                         
@@ -278,28 +482,28 @@ if arquivos_enviados:
                                 mask_est = df_filtrado.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
                                 df_filtrado = df_filtrado[mask_est]
                             
-                            # 💡 O NOVO SISTEMA DE ABAS (COM O GRÁFICO IGUAL AO DO RELATORIADOR)
-                            aba_visu, aba_tab = st.tabs(["📊 Ranking de Estoque (Gráfico)", "📋 Tabela Detalhada"])
+                            aba_visu, aba_tab = st.tabs(["📊 Distribuição de Estoque", "📋 Base de Dados Operacional"])
                             
                             with aba_visu:
+                                titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"Volumetria de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
+                                
+                                dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
+                                
+                                col_g1, col_g2 = st.columns([0.8, 0.2])
+                                with col_g1:
+                                    st.write("💡 *Visualize a disponibilidade por SKU. Baixe em PNG (Câmera) ou gere o PDF de Ranking.*")
+                                with col_g2:
+                                    if FPDF is not None and not dados_grafico.empty:
+                                        pdf_rk_bytes = gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque")
+                                        st.download_button(label="📄 Baixar em PDF", data=pdf_rk_bytes, file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
+
                                 if not df_filtrado.empty and st_echarts is not None:
-                                    st.write("💡 *Visualize as peças com maior e menor disponibilidade. Use a Câmera para baixar a imagem.*")
-                                    
-                                    # Agrupa as peças para o gráfico e ordena (maior em cima)
-                                    dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
-                                    
-                                    dados_barras_formatados = []
-                                    for _, row in dados_grafico.iterrows():
-                                        dados_barras_formatados.append({
-                                            "value": int(row[col_qtd]),
-                                            "label": {"show": True, "position": "right", "formatter": "{c} unid.", "color": "#0F172A", "fontWeight": "bold"}
-                                        })
-                                    
+                                    dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#0F172A", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
                                     altura_dinamica = max(500, len(dados_grafico) * 45)
                                     
                                     bar_options = {
                                         "backgroundColor": "transparent",
-                                        "title": {"text": "Volume de Estoque por Item", "left": "center", "textStyle": {"color": "#0F172A", "fontSize": 16, "fontFamily": "Plus Jakarta Sans"}},
+                                        "title": {"text": "Volumetria por SKU", "left": "center", "textStyle": {"color": "#0F172A", "fontSize": 16, "fontFamily": "Plus Jakarta Sans"}},
                                         "toolbox": {"feature": {"saveAsImage": {"show": True, "title": "Baixar PNG", "pixelRatio": 2}}},
                                         "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
                                         "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
@@ -307,14 +511,7 @@ if arquivos_enviados:
                                         "yAxis": {
                                             "type": "category", 
                                             "data": dados_grafico[col_desc].tolist(), 
-                                            "axisLabel": {
-                                                "interval": 0, 
-                                                "width": 250, 
-                                                "overflow": "break", 
-                                                "lineHeight": 14,
-                                                "color": "#475569",
-                                                "fontFamily": "Plus Jakarta Sans"
-                                            }
+                                            "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#475569"}
                                         },
                                         "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#0F172A", "borderRadius": [0, 6, 6, 0]}}]
                                     }
@@ -323,21 +520,33 @@ if arquivos_enviados:
                                     st.info("Nenhum dado encontrado para gerar o gráfico.")
 
                             with aba_tab:
+                                titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
+                                
                                 nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
                                 df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
+                                
+                                col_t1, col_t2 = st.columns([0.8, 0.2])
+                                with col_t1:
+                                    st.write("💡 *Base de dados filtrada e pronta para exportação formal.*")
+                                with col_t2:
+                                    if FPDF is not None and not df_tabela.empty:
+                                        pdf_tb_bytes = gerar_pdf_tabela(df_tabela, titulo_tab_est)
+                                        st.download_button(label="📄 Baixar em PDF", data=pdf_tb_bytes, file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
+
                                 st.dataframe(df_tabela, use_container_width=True)
 
                 except Exception as e:
-                    st.error(f"Erro na planilha: {e}")
+                    st.error(f"Erro no processamento do arquivo: {e}")
 
             elif extensao in ['docx', 'txt']:
-                st.info("🎯 **Objetivo Detectado:** Catálogo / Documentação.")
+                st.info("🎯 **Módulo de Documentação Ativado**")
                 if Document is None and extensao == 'docx':
-                    st.error("Biblioteca 'python-docx' não instalada. Adicione ao requirements.txt.")
+                    st.error("Biblioteca 'python-docx' ausente no servidor.")
                 else:
                     conteudo = [p.text for p in Document(arquivo).paragraphs] if extensao == 'docx' else arquivo.read().decode("utf-8").splitlines()
                     
-                    busca = campo_pesquisa(f"🔍 Busca Dinâmica no arquivo: {arquivo.name}", "Digite para escanear o documento...", key=f"bd_{arquivo.name}")
+                    busca = campo_pesquisa(f"🔍 Busca Dinâmica", "Pesquise palavras-chave no documento...", key=f"bd_{arquivo.name}")
+                    st.markdown("<br>", unsafe_allow_html=True)
                     
                     if busca:
                         resultados = [l for l in conteudo if busca.lower() in l.lower()]
@@ -345,7 +554,7 @@ if arquivos_enviados:
                             for r in resultados: 
                                 st.write(f"🔹 {r}")
                         else:
-                            st.warning("Nenhum trecho correspondente encontrado no documento.")
+                            st.warning("Nenhum trecho correspondente encontrado.")
 
 else:
-    st.info("Aguardando o envio de documentos para iniciar as operações.")
+    st.info("Aguardando inserção de dados para iniciar os motores de análise.")
