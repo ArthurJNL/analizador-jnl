@@ -363,7 +363,7 @@ if arquivos_enviados:
                                 col_m3.metric("🚨 Itens para repor", len(df_critico))
 
                                 if not df_critico.empty:
-                                    st.error(f"**Atenção:** {len(df_critico)} SKUs atingiram a cota mínima de reposição.")
+                                    st.error(f"**Atenção:** {len(df_critico)} Itens atingiram a cota mínima de reposição.")
                                     for _, linha in df_critico.iterrows():
                                         c1, c2 = st.columns([0.85, 0.15])
                                         item_nome = linha[col_desc]
@@ -387,7 +387,6 @@ if arquivos_enviados:
                                 mask_est = df_filtrado.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
                                 df_filtrado = df_filtrado[mask_est]
                             
-                            # 💡 ABAS INVERTIDAS: Tabela primeiro, Gráfico depois!
                             aba_tab, aba_visu = st.tabs(["📋 Base de Dados Operacional", "📊 Distribuição de Estoque"])
                             
                             with aba_tab:
