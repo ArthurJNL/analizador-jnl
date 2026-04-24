@@ -3,4 +3,4 @@ streamlit
 pandas
 openpyxl
 python-docx
-st-keyup
+streamlit-keyup
