@@ -14,11 +14,77 @@ try:
 except ImportError:
     st_keyup = None
 
+try:
+    from streamlit_echarts import st_echarts
+except ImportError:
+    st_echarts = None
+
 # 1. CONFIGURAÇÕES DA PÁGINA
 st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
 
+# --- DESIGN PREMIUM SAAS (Inspirado no AgentOps) ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] { 
+        font-family: 'Plus Jakarta Sans', sans-serif; 
+    }
+    
+    /* Fundo da Tela (Cinza/Azulado muito suave) */
+    .main { 
+        background-color: #F7F9FC; 
+    }
+    
+    /* Barra Lateral Branca e Limpa */
+    [data-testid="stSidebar"] { 
+        background-color: #FFFFFF; 
+        border-right: 1px solid #E2E8F0; 
+    }
+    
+    /* Cartões Flutuantes (SaaS Style) */
+    .stMetric, .echarts-container, [data-testid="stDataFrame"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 16px !important;
+        padding: 15px !important;
+        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.03) !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .stMetric:hover {
+        box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.06) !important;
+        transform: translateY(-2px);
+    }
+
+    /* Caixas de Texto (Pesquisa) */
+    .stTextInput > div > div > input {
+        border-radius: 10px; 
+        border: 1px solid #CBD5E1; 
+        padding: 12px 16px;
+        background-color: #FFFFFF;
+        box-shadow: 0px 2px 4px rgba(0,0,0,0.02);
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #0F172A; 
+        box-shadow: 0 0 0 1px #0F172A;
+    }
+    
+    /* Abas Modernas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 20px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 15px;
+        border-radius: 8px 8px 0px 0px;
+    }
+    
+    .stDeployButton {display:none;}
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("🛡️ ANALIZADOR JNL")
-st.write("Análise inteligente e ao vivo.")
+st.write("Análise inteligente e controle operacional.")
 
 # --- MOTOR DE PESQUISA INTELIGENTE (KEYUP) ---
 def campo_pesquisa(label, placeholder, key):
@@ -151,18 +217,16 @@ if arquivos_enviados:
                                 c2.download_button("🔔 Me lembre", data=conteudo_ics, file_name="Lembrete.ics", key=str(uuid.uuid4()))
                         
                         with tab_dados:
-                            # 💡 O NOVO CAMPO DE PESQUISA EM TEMPO REAL PARA O FINANCEIRO
                             busca_fin = campo_pesquisa("🔍 Busca Dinâmica", "Digite cliente, nota ou valor para filtrar a tabela instantaneamente...", key=f"bf_{arquivo.name}")
                             df_view = df.copy()
                             if busca_fin:
-                                # Varredura completa: procura a palavra em todas as colunas da tabela de uma vez
                                 mask_fin = df_view.astype(str).apply(lambda x: x.str.contains(busca_fin, case=False, na=False)).any(axis=1)
                                 df_view = df_view[mask_fin]
                             st.dataframe(df_view, use_container_width=True)
 
-                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO ---
+                    # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO (COM GRÁFICO SAAS) ---
                     else:
-                        st.info("🎯 **Objetivo Detectado:** Inventário (Análise Individual por Estoque Mínimo).")
+                        st.info("🎯 **Objetivo Detectado:** Inventário (Análise de Estoque e Ponto de Reposição).")
                         
                         col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quantidade', 'saldo', 'estoque'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome'])), None)
@@ -174,35 +238,37 @@ if arquivos_enviados:
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
                             
+                            # 💡 MÉTRICAS ESTILO SAAS (TOPO)
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            
                             if col_minimo:
                                 df[col_minimo] = pd.to_numeric(df[col_minimo], errors='coerce').fillna(0)
                                 df_critico = df[df[col_qtd] <= df[col_minimo]].sort_values(by=col_qtd)
                                 
-                                col_m1, col_m2 = st.columns(2)
-                                col_m1.metric("Total de Itens Analisados", len(df))
-                                col_m2.metric("Itens em Nível Crítico (≤ Mínimo Específico)", len(df_critico))
+                                col_m1.metric("📦 Total de Itens", len(df))
+                                col_m2.metric("🔢 Volume em Estoque", f"{int(df[col_qtd].sum())} unid.")
+                                col_m3.metric("🚨 Itens em Nível Crítico", len(df_critico))
 
                                 if not df_critico.empty:
-                                    st.error(f"🚨 **ALERTA DE REPOSIÇÃO: {len(df_critico)} itens atingiram a sua cota mínima e precisam de atenção!**")
+                                    st.error(f"🚨 **ALERTA DE REPOSIÇÃO: {len(df_critico)} itens atingiram a sua cota mínima!**")
                                     for _, linha in df_critico.iterrows():
                                         c1, c2 = st.columns([0.85, 0.15])
                                         item_nome = linha[col_desc]
                                         saldo = int(linha[col_qtd])
                                         minimo_item = int(linha[col_minimo])
                                         
-                                        c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')} | Local: {linha.get(col_prat, 'S/L')}")
+                                        c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')}")
                                         conteudo_ics_estoque = criar_lembrete_estoque(item_nome, saldo, minimo_item)
                                         c2.download_button(label="🔔 Repor", data=conteudo_ics_estoque, file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
-                                else:
-                                    st.success("✅ O seu armazém está seguro. Todos os itens estão com saldo acima dos seus respectivos estoques mínimos.")
                             else:
-                                st.warning("⚠️ **Atenção:** Coluna de limite mínimo não encontrada! Para que os alertas funcionem, adicione uma coluna na sua planilha com o título 'ESTOQUE MÍNIMO'.")
+                                col_m1.metric("📦 Total de Itens Analisados", len(df))
+                                col_m2.metric("🔢 Volume Total em Estoque", f"{int(df[col_qtd].sum())} unid.")
+                                st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não encontrada para gerar alertas.")
 
                         st.write("---")
-                        st.write("**Tabela de Controle Filtrada:**")
                         
-                        # 💡 O NOVO CAMPO DE PESQUISA EM TEMPO REAL PARA O ESTOQUE
-                        busca_est = campo_pesquisa("🔍 Busca Dinâmica", "Pesquise por peça, marca ou prateleira em tempo real...", key=f"be_{arquivo.name}")
+                        # 💡 CAMPO DE PESQUISA INTELIGENTE E SAAS
+                        busca_est = campo_pesquisa("🔍 Busca Dinâmica", "Pesquise por peça, marca ou local para filtrar o gráfico e a tabela...", key=f"be_{arquivo.name}")
                         
                         colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
                         
@@ -211,16 +277,55 @@ if arquivos_enviados:
                             if busca_est:
                                 mask_est = df_filtrado.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
                                 df_filtrado = df_filtrado[mask_est]
-                                
-                            nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
-                            df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns}, inplace=True)
-                            st.dataframe(df_filtrado, use_container_width=True)
-                        else:
-                            df_view_est = df.copy()
-                            if busca_est:
-                                mask_est = df_view_est.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
-                                df_view_est = df_view_est[mask_est]
-                            st.dataframe(df_view_est, use_container_width=True)
+                            
+                            # 💡 O NOVO SISTEMA DE ABAS (COM O GRÁFICO IGUAL AO DO RELATORIADOR)
+                            aba_visu, aba_tab = st.tabs(["📊 Ranking de Estoque (Gráfico)", "📋 Tabela Detalhada"])
+                            
+                            with aba_visu:
+                                if not df_filtrado.empty and st_echarts is not None:
+                                    st.write("💡 *Visualize as peças com maior e menor disponibilidade. Use a Câmera para baixar a imagem.*")
+                                    
+                                    # Agrupa as peças para o gráfico e ordena (maior em cima)
+                                    dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
+                                    
+                                    dados_barras_formatados = []
+                                    for _, row in dados_grafico.iterrows():
+                                        dados_barras_formatados.append({
+                                            "value": int(row[col_qtd]),
+                                            "label": {"show": True, "position": "right", "formatter": "{c} unid.", "color": "#0F172A", "fontWeight": "bold"}
+                                        })
+                                    
+                                    altura_dinamica = max(500, len(dados_grafico) * 45)
+                                    
+                                    bar_options = {
+                                        "backgroundColor": "transparent",
+                                        "title": {"text": "Volume de Estoque por Item", "left": "center", "textStyle": {"color": "#0F172A", "fontSize": 16, "fontFamily": "Plus Jakarta Sans"}},
+                                        "toolbox": {"feature": {"saveAsImage": {"show": True, "title": "Baixar PNG", "pixelRatio": 2}}},
+                                        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                                        "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
+                                        "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
+                                        "yAxis": {
+                                            "type": "category", 
+                                            "data": dados_grafico[col_desc].tolist(), 
+                                            "axisLabel": {
+                                                "interval": 0, 
+                                                "width": 250, 
+                                                "overflow": "break", 
+                                                "lineHeight": 14,
+                                                "color": "#475569",
+                                                "fontFamily": "Plus Jakarta Sans"
+                                            }
+                                        },
+                                        "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#0F172A", "borderRadius": [0, 6, 6, 0]}}]
+                                    }
+                                    st_echarts(options=bar_options, height=f"{altura_dinamica}px")
+                                else:
+                                    st.info("Nenhum dado encontrado para gerar o gráfico.")
+
+                            with aba_tab:
+                                nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
+                                df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
+                                st.dataframe(df_tabela, use_container_width=True)
 
                 except Exception as e:
                     st.error(f"Erro na planilha: {e}")
@@ -232,7 +337,6 @@ if arquivos_enviados:
                 else:
                     conteudo = [p.text for p in Document(arquivo).paragraphs] if extensao == 'docx' else arquivo.read().decode("utf-8").splitlines()
                     
-                    # 💡 O NOVO CAMPO DE PESQUISA EM TEMPO REAL PARA DOCUMENTOS
                     busca = campo_pesquisa(f"🔍 Busca Dinâmica no arquivo: {arquivo.name}", "Digite para escanear o documento...", key=f"bd_{arquivo.name}")
                     
                     if busca:

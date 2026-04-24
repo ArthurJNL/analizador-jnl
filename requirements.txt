@@ -4,3 +4,4 @@ pandas
 openpyxl
 python-docx
 streamlit-keyup
+streamlit-echarts
