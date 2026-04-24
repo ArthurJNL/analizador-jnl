@@ -26,7 +26,7 @@ except ImportError:
     FPDF = None
 
 # 1. CONFIGURAÇÕES DA PÁGINA
-st.set_page_config(page_title="Analizador JNL", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Analisador JNL", page_icon="🛡️", layout="wide")
 
 # --- DESIGN ESTÁVEL E MINIMALISTA ---
 st.markdown("""
@@ -57,7 +57,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ ANALIZADOR JNL")
+st.title("🛡️ ANALISADOR JNL")
 st.write("Análise inteligente e controle operacional.")
 st.markdown("---")
 
@@ -97,7 +97,7 @@ if FPDF is not None:
     class PDFReport(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 10)
-            self.cell(0, 10, 'ANALIZADOR JNL - Relatorio Oficial', 0, 1, 'C')
+            self.cell(0, 10, 'ANALISADOR JNL - Relatorio Oficial', 0, 1, 'C')
             self.ln(2)
         def footer(self):
             self.set_y(-15)
@@ -354,7 +354,7 @@ if arquivos_enviados:
 
                     # --- FLUXO 2: PATRIMÔNIO / INVENTÁRIO ---
                     else:
-                        st.info("🎯 **Módulo de Logística e Inventário Ativado**")
+                        st.info("🎯 **Módulo de Logística e Inventário**")
                         
                         col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quantidade', 'saldo', 'estoque'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome'])), None)
@@ -372,9 +372,9 @@ if arquivos_enviados:
                                 df[col_minimo] = pd.to_numeric(df[col_minimo], errors='coerce').fillna(0)
                                 df_critico = df[df[col_qtd] <= df[col_minimo]].sort_values(by=col_qtd)
                                 
-                                col_m1.metric("SKUs Analisados", len(df))
-                                col_m2.metric("Volume Operacional", f"{int(df[col_qtd].sum())} un.")
-                                col_m3.metric("🚨 Nível Crítico", len(df_critico))
+                                col_m1.metric("Itens Analisados", len(df))
+                                col_m2.metric("Total geral de itens", f"{int(df[col_qtd].sum())} un.")
+                                col_m3.metric("🚨 Itens para repor", len(df_critico))
 
                                 if not df_critico.empty:
                                     st.error(f"**Atenção:** {len(df_critico)} SKUs atingiram a cota mínima de reposição.")
@@ -387,12 +387,12 @@ if arquivos_enviados:
                                         c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')}")
                                         c2.download_button(label="🔔 Repor", data=criar_lembrete_estoque(item_nome, saldo, minimo_item), file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
                             else:
-                                col_m1.metric("SKUs Analisados", len(df))
-                                col_m2.metric("Volume Operacional", f"{int(df[col_qtd].sum())} un.")
+                                col_m1.metric("Itens Analisados", len(df))
+                                col_m2.metric("Total geral de itens", f"{int(df[col_qtd].sum())} un.")
                                 st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não detectada no arquivo.")
 
                         st.write("---")
-                        busca_est = campo_pesquisa("🔍 Filtro Operacional", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
+                        busca_est = campo_pesquisa("🔍 Filtro", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
                         
                         colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
                         
@@ -405,30 +405,36 @@ if arquivos_enviados:
                             aba_visu, aba_tab = st.tabs(["📊 Distribuição de Estoque", "📋 Base de Dados Operacional"])
                             
                             with aba_visu:
-                                titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"Volumetria de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
-                                dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
+                                # 💡 MÁGICA DA OTIMIZAÇÃO: Toggle para esconder/mostrar o gráfico, desativado por padrão
+                                mostrar_grafico = st.toggle("Exibir Gráfico de Volumetria", value=False, key=f"tgl_graf_{arquivo.name}")
                                 
-                                col_g1, col_g2 = st.columns([0.8, 0.2])
-                                with col_g1: st.write("💡 *Baixe o gráfico em PNG pela câmera ou gere um relatório em PDF.*")
-                                with col_g2:
-                                    if FPDF is not None and not dados_grafico.empty:
-                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque"), file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
-
-                                if not df_filtrado.empty and st_echarts is not None:
-                                    dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
-                                    altura_dinamica = max(500, len(dados_grafico) * 45)
+                                if mostrar_grafico:
+                                    titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"CONTROLE DE VOLUME - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
+                                    dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
                                     
-                                    bar_options = {
-                                        "backgroundColor": "transparent",
-                                        "title": {"text": "Volumetria por SKU", "left": "center", "textStyle": {"color": "#111111", "fontSize": 16, "fontFamily": "Inter"}},
-                                        "toolbox": {"feature": {"saveAsImage": {"show": True, "title": "Baixar PNG", "pixelRatio": 2}}},
-                                        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-                                        "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
-                                        "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
-                                        "yAxis": {"type": "category", "data": dados_grafico[col_desc].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
-                                        "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#111111", "borderRadius": [0, 6, 6, 0]}}]
-                                    }
-                                    st_echarts(options=bar_options, height=f"{altura_dinamica}px")
+                                    col_g1, col_g2 = st.columns([0.8, 0.2])
+                                    with col_g1: st.write("💡 *Baixe em PNG ou PDF.*")
+                                    with col_g2:
+                                        if FPDF is not None and not dados_grafico.empty:
+                                            st.download_button(label="📄 Baixar PDF", data=gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque"), file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
+
+                                    if not df_filtrado.empty and st_echarts is not None:
+                                        dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
+                                        altura_dinamica = max(500, len(dados_grafico) * 45)
+                                        
+                                        bar_options = {
+                                            "backgroundColor": "transparent",
+                                            "title": {"text": "Volumetria por SKU", "left": "center", "textStyle": {"color": "#111111", "fontSize": 16, "fontFamily": "Inter"}},
+                                            "toolbox": {"feature": {"saveAsImage": {"show": True, "title": "Baixar PNG", "pixelRatio": 2}}},
+                                            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                                            "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
+                                            "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
+                                            "yAxis": {"type": "category", "data": dados_grafico[col_desc].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
+                                            "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#111111", "borderRadius": [0, 6, 6, 0]}}]
+                                        }
+                                        st_echarts(options=bar_options, height=f"{altura_dinamica}px")
+                                else:
+                                    st.info("📊 O gráfico está desativado para otimizar o desempenho. Clique no interruptor acima para visualizá-lo.")
 
                             with aba_tab:
                                 titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
@@ -436,7 +442,7 @@ if arquivos_enviados:
                                 df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
                                 
                                 col_t1, col_t2 = st.columns([0.8, 0.2])
-                                with col_t1: st.write("💡 *Exporte a tabela completa estruturada para PDF.*")
+                                with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
                                 with col_t2:
                                     if FPDF is not None and not df_tabela.empty:
                                         st.download_button(label="📄 Baixar PDF", data=gerar_pdf_tabela(df_tabela, titulo_tab_est), file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
