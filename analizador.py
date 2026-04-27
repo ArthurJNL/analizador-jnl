@@ -3,6 +3,10 @@ import pandas as pd
 from datetime import datetime
 import math
 import uuid
+import urllib.parse
+import io
+import requests
+import os
 
 # --- MOTORES EXTERNOS ---
 try:
@@ -62,11 +66,22 @@ def campo_pesquisa(label, placeholder, key):
     else:
         return st.text_input(label, placeholder=placeholder, key=key)
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL (MOTOR DUPLO) ---
 with st.sidebar:
     st.header("⚙️ Operação")
     st.markdown("---")
-    arquivos_enviados = st.file_uploader("Arraste os seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt", "csv"], accept_multiple_files=True)
+    
+    aba_upload, aba_link = st.tabs(["📂 Upload Manual", "🔗 Sincronização Automática"])
+    
+    with aba_upload:
+        st.write("*Para análises rápidas e avulsas:*")
+        arquivos_enviados = st.file_uploader("Arraste os seus documentos", type=["xlsx", "xls", "xlsm", "docx", "txt", "csv"], accept_multiple_files=True)
+        
+    with aba_link:
+        st.write("*Para leitura em tempo real sem cliques:*")
+        link_auto = st.text_input("Cole o Link da Nuvem ou Caminho do PC:", placeholder="Ex: C:\\JNL\\estoque.csv ou https://...")
+        if link_auto:
+            st.success("Antena de sincronização ativa! 📡")
 
 def formatar_moeda(valor):
     try:
@@ -79,6 +94,16 @@ def formatar_orcamento(valor):
         return "S/N"
     try: return str(int(float(valor)))
     except: return str(valor).strip()
+
+# ==========================================
+# GERAÇÃO DE E-MAIL (OUTLOOK)
+# ==========================================
+def gerar_link_email():
+    assunto = "RELATÓRIO"
+    corpo = "Olá! Espero que esteja bem.\n\nSegue em anexo relatório puxado ."
+    assunto_enc = urllib.parse.quote(assunto)
+    corpo_enc = urllib.parse.quote(corpo)
+    return f"mailto:?subject={assunto_enc}&body={corpo_enc}"
 
 # ==========================================
 # MOTORES DE RELATÓRIO PDF (BLINDADOS)
@@ -106,7 +131,7 @@ if FPDF is not None:
             if 'DESCRI' in c or 'RAZAO' in c or 'NOME' in c or 'ITEM' in c: widths.append(page_width * 0.35)
             elif 'OBS' in c: widths.append(page_width * 0.25)
             elif 'DATA' in c or 'SITUA' in c or 'MARCA' in c or 'LOCAL' in c or 'PRAT' in c: widths.append(page_width * 0.15)
-            elif 'QTD' in c or 'QUANTIDADE' in c or 'MIN' in c or 'MÍN' in c: widths.append(page_width * 0.1)
+            elif 'QTD' in c or 'QUANTIDADE' in c or 'MIN' in c or 'MÍN' in c or 'FATURADA' in c: widths.append(page_width * 0.1)
             else: widths.append(page_width * 0.15)
         total = sum(widths) if sum(widths) > 0 else page_width
         return [w * (page_width / total) for w in widths]
@@ -274,23 +299,55 @@ def criar_lembrete_estoque(item, qtd, minimo):
     return f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//JNL//Lembrete Estoque//PT\nBEGIN:VEVENT\nUID:{uid}\nDTSTART:{dtstart}\nDTEND:{dtend}\nSUMMARY:📦 REPOR ESTOQUE: {item_limpo}\nDESCRIPTION:Alerta JNL\\nO item '{item_limpo}' atingiu nível crítico.\\nSaldo Atual: {qtd} unidades\\nMínimo Exigido: {minimo} unidades\\nNecessário solicitar reposição imediatamente.\nBEGIN:VALARM\nTRIGGER:-PT5M\nACTION:DISPLAY\nDESCRIPTION:Reposição de Estoque\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR"
 
 # ==========================================
+# GESTOR DE ARQUIVOS (MOTOR CENTRAL DE ENTRADA)
+# ==========================================
+lista_arquivos_processar = []
+
+# Adiciona arquivos do upload manual
+if arquivos_enviados:
+    lista_arquivos_processar.extend(arquivos_enviados)
+
+# Adiciona arquivo da sincronização automática
+if link_auto:
+    try:
+        if link_auto.startswith("http"):
+            response = requests.get(link_auto)
+            response.raise_for_status()
+            arquivo_simulado = io.BytesIO(response.content)
+            arquivo_simulado.name = "Sincronizacao_Nuvem.csv"
+            lista_arquivos_processar.append(arquivo_simulado)
+        else:
+            caminho_limpo = link_auto.strip('\"').strip('\'')
+            if os.path.exists(caminho_limpo):
+                extensao = caminho_limpo.split('.')[-1]
+                with open(caminho_limpo, 'rb') as f:
+                    arquivo_simulado = io.BytesIO(f.read())
+                arquivo_simulado.name = f"Sincronizacao_Local.{extensao}"
+                lista_arquivos_processar.append(arquivo_simulado)
+            else:
+                st.sidebar.error("Arquivo local não encontrado no caminho especificado.")
+    except Exception as e:
+        st.sidebar.error(f"Falha na sincronização: {e}")
+
+# ==========================================
 # PROCESSAMENTO DE ARQUIVOS
 # ==========================================
-if arquivos_enviados:
-    for arquivo in arquivos_enviados:
+if lista_arquivos_processar:
+    for arquivo in lista_arquivos_processar:
         extensao = arquivo.name.split('.')[-1].lower()
         
         with st.expander(f"📄 DOCUMENTO ATIVO: {arquivo.name.upper()}", expanded=True):
             
             if extensao in ['xlsx', 'xls', 'xlsm', 'csv']:
                 try:
-                    if extensao == 'csv': df = pd.read_csv(arquivo, sep=None, engine='python')
+                    if extensao == 'csv': df = pd.read_csv(arquivo, sep=None, engine='python', encoding='utf-8', on_bad_lines='skip')
                     else: df = pd.read_excel(arquivo)
                     
-                    if any("Unnamed" in str(c) for c in df.columns):
+                    df.columns = [str(c) for c in df.columns]
+                    if any("Unnamed" in c for c in df.columns) or any("vazio" in c.lower() for c in df.columns):
                         for idx, row in df.head(15).iterrows():
                             linha_texto = " ".join([str(x).lower() for x in row.values])
-                            if any(k in linha_texto for k in ['valor', 'r$', 'data', 'venc', 'cliente', 'item', 'qtd', 'estoque', 'marca', 'prateleira']):
+                            if any(k in linha_texto for k in ['valor', 'r$', 'data', 'venc', 'cliente', 'item', 'qtd', 'quant', 'descri', 'estoque', 'marca', 'prateleira', 'faturada']):
                                 nomes_limpos = []
                                 for i, c in enumerate(row.values):
                                     nome = str(c).strip() if pd.notna(c) and str(c).strip() != "" else f"vazio_{i}"
@@ -343,7 +400,7 @@ if arquivos_enviados:
                     else:
                         st.info("🎯 **Módulo de Logística e Inventário**")
                         
-                        col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quant', 'saldo', 'estoque'])), None)
+                        col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quant', 'saldo', 'estoque', 'faturada'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome', 'peça'])), None)
                         col_marca = next((v for k, v in cols_limpas.items() if 'marca' in k or 'fabricante' in k), None)
                         col_prat = next((v for k, v in cols_limpas.items() if 'prateleira' in k or 'local' in k), None)
@@ -364,6 +421,17 @@ if arquivos_enviados:
 
                                 if not df_critico.empty:
                                     st.error(f"**Atenção:** {len(df_critico)} Itens atingiram a cota mínima de reposição.")
+                                    
+                                    link_email_geral = gerar_link_email()
+                                    btn_html = f'''
+                                    <a href="{link_email_geral}" style="text-decoration: none; margin-bottom: 15px; display: inline-block;">
+                                        <div style="padding: 6px 14px; font-size: 14px; font-weight: 600; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
+                                            📧 E-mail de Reposição (Outlook)
+                                        </div>
+                                    </a>
+                                    '''
+                                    st.markdown(btn_html, unsafe_allow_html=True)
+
                                     for _, linha in df_critico.iterrows():
                                         c1, c2 = st.columns([0.85, 0.15])
                                         item_nome = linha[col_desc]
@@ -398,7 +466,7 @@ if arquivos_enviados:
                         with aba_tab:
                             titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
                             
-                            col_t1, col_t2 = st.columns([0.8, 0.2])
+                            col_t1, col_t2, col_t3 = st.columns([0.6, 0.2, 0.2])
                             with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
                             with col_t2:
                                 if FPDF is not None and not df_base.empty:
@@ -408,7 +476,18 @@ if arquivos_enviados:
                                     else:
                                         st.error("Erro interno no gerador.")
                                 elif FPDF is None:
-                                    st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
+                                    st.error("⚠️ Falta 'fpdf' no GitHub!")
+                            
+                            with col_t3:
+                                link_email_tab = gerar_link_email()
+                                btn_html_tab = f'''
+                                <a href="{link_email_tab}" style="text-decoration: none;">
+                                    <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
+                                        📧 Abrir Outlook
+                                    </div>
+                                </a>
+                                '''
+                                st.markdown(btn_html_tab, unsafe_allow_html=True)
 
                             st.dataframe(df_base, use_container_width=True)
 
@@ -424,7 +503,7 @@ if arquivos_enviados:
                                     
                                     dados_grafico = df_base.groupby(col_d_nome)[col_q_nome].sum().reset_index().sort_values(by=col_q_nome, ascending=True)
                                     
-                                    col_g1, col_g2 = st.columns([0.8, 0.2])
+                                    col_g1, col_g2, col_g3 = st.columns([0.6, 0.2, 0.2])
                                     with col_g1: st.write("💡 *Baixe em PNG ou PDF.*")
                                     with col_g2:
                                         if FPDF is not None and not dados_grafico.empty:
@@ -432,7 +511,18 @@ if arquivos_enviados:
                                             if pdf_rk:
                                                 st.download_button(label="📄 Baixar PDF", data=pdf_rk, file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
                                         elif FPDF is None:
-                                            st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
+                                            st.error("⚠️ Falta 'fpdf' no GitHub!")
+                                    
+                                    with col_g3:
+                                        link_email_graf = gerar_link_email()
+                                        btn_html_graf = f'''
+                                        <a href="{link_email_graf}" style="text-decoration: none;">
+                                            <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
+                                                📧 Abrir Outlook
+                                            </div>
+                                        </a>
+                                        '''
+                                        st.markdown(btn_html_graf, unsafe_allow_html=True)
 
                                     if not df_base.empty and st_echarts is not None:
                                         dados_barras_formatados = [{"value": int(row[col_q_nome]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
@@ -450,7 +540,7 @@ if arquivos_enviados:
                                         }
                                         st_echarts(options=bar_options, height=f"{altura_dinamica}px")
                                 else:
-                                    st.warning("O gráfico não pode ser gerado porque as colunas de quantidade ou descrição não foram perfeitamente identificadas no seu ficheiro.")
+                                    st.warning("O gráfico não pode ser gerado porque as colunas de quantidade ou descrição não foram perfeitamente identificadas no ficheiro.")
                             else:
                                 st.info("📊 O gráfico está desativado para otimizar o desempenho. Clique no interruptor acima para visualizá-lo.")
 
