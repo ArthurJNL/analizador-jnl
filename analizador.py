@@ -33,10 +33,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
-    html, body, [class*="css"] { 
-        font-family: 'Inter', sans-serif; 
-    }
-    
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stApp { background-color: #F8F9FA; }
     
     .stTextInput input {
@@ -69,7 +66,7 @@ def campo_pesquisa(label, placeholder, key):
 with st.sidebar:
     st.header("⚙️ Operação")
     st.markdown("---")
-    arquivos_enviados = st.file_uploader("Arraste seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt", "csv"], accept_multiple_files=True)
+    arquivos_enviados = st.file_uploader("Arraste os seus documentos e planilhas", type=["xlsx", "xls", "xlsm", "docx", "txt", "csv"], accept_multiple_files=True)
 
 def formatar_moeda(valor):
     try:
@@ -84,7 +81,7 @@ def formatar_orcamento(valor):
     except: return str(valor).strip()
 
 # ==========================================
-# MOTORES DE RELATÓRIO PDF
+# MOTORES DE RELATÓRIO PDF (BLINDADOS)
 # ==========================================
 def limpar_texto(t):
     import unicodedata
@@ -105,154 +102,157 @@ if FPDF is not None:
         page_width = 190
         widths = []
         for col in colunas:
-            c = col.upper()
+            c = str(col).upper()
             if 'DESCRI' in c or 'RAZAO' in c or 'NOME' in c or 'ITEM' in c: widths.append(page_width * 0.35)
             elif 'OBS' in c: widths.append(page_width * 0.25)
             elif 'DATA' in c or 'SITUA' in c or 'MARCA' in c or 'LOCAL' in c or 'PRAT' in c: widths.append(page_width * 0.15)
             elif 'QTD' in c or 'QUANTIDADE' in c or 'MIN' in c or 'MÍN' in c: widths.append(page_width * 0.1)
             else: widths.append(page_width * 0.15)
-        
-        total = sum(widths)
+        total = sum(widths) if sum(widths) > 0 else page_width
         return [w * (page_width / total) for w in widths]
 
+    @st.cache_data(show_spinner=False)
     def gerar_pdf_tabela(df, titulo):
-        pdf = PDFReport()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
-        pdf.ln(5)
-        
-        colunas = list(df.columns)
-        widths = obter_larguras_dinamicas(colunas)
+        try:
+            pdf = PDFReport()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+            pdf.ln(5)
             
-        pdf.set_fill_color(17, 17, 17)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", 'B', 9)
-        
-        for i, col in enumerate(colunas):
-            pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
-        pdf.ln()
-        
-        line_height = 5
-        pdf.set_font("Arial", '', 8)
-        pdf.set_fill_color(255, 255, 255)
-        pdf.set_text_color(26, 28, 30)
-        
-        for _, row in df.iterrows():
-            max_linhas = 1
-            for i, item in enumerate(row):
-                texto = limpar_texto(item)
-                w_util = widths[i] - 2
-                w_texto = pdf.get_string_width(texto)
-                linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
-                if linhas > max_linhas:
-                    max_linhas = linhas
+            colunas = list(df.columns)
+            widths = obter_larguras_dinamicas(colunas)
+                
+            pdf.set_fill_color(17, 17, 17)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Arial", 'B', 9)
+            
+            for i, col in enumerate(colunas):
+                pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
+            pdf.ln()
+            
+            line_height = 5
+            pdf.set_font("Arial", '', 8)
+            pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(26, 28, 30)
+            
+            for _, row in df.iterrows():
+                max_linhas = 1
+                for i, item in enumerate(row):
+                    texto = limpar_texto(item)
+                    w_util = widths[i] - 2
+                    w_texto = pdf.get_string_width(texto)
+                    linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                    if linhas > max_linhas: max_linhas = linhas
+                        
+                h_linha = (max_linhas * line_height) + 2
+                
+                if pdf.get_y() + h_linha > 275:
+                    pdf.add_page()
+                    pdf.set_fill_color(17, 17, 17)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.set_font("Arial", 'B', 9)
+                    for i, col in enumerate(colunas):
+                        pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
+                    pdf.ln()
+                    pdf.set_font("Arial", '', 8)
+                    pdf.set_fill_color(255, 255, 255)
+                    pdf.set_text_color(26, 28, 30)
+                        
+                start_x = pdf.get_x()
+                start_y = pdf.get_y()
+                
+                for i, item in enumerate(row):
+                    w = widths[i]
+                    x = start_x + sum(widths[:i])
+                    y = start_y
+                    pdf.rect(x, y, w, h_linha, 'D')
+                    pdf.set_xy(x, y + 1)
+                    align = 'L' if i == 0 else 'C'
+                    pdf.multi_cell(w, line_height, limpar_texto(item), border=0, align=align)
                     
-            h_linha = (max_linhas * line_height) + 2
-            
-            if pdf.get_y() + h_linha > 275:
-                pdf.add_page()
-                pdf.set_fill_color(17, 17, 17)
-                pdf.set_text_color(255, 255, 255)
-                pdf.set_font("Arial", 'B', 9)
-                for i, col in enumerate(colunas):
-                    pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
-                pdf.ln()
-                pdf.set_font("Arial", '', 8)
-                pdf.set_fill_color(255, 255, 255)
-                pdf.set_text_color(26, 28, 30)
-                    
-            start_x = pdf.get_x()
-            start_y = pdf.get_y()
-            
-            for i, item in enumerate(row):
-                texto = limpar_texto(item)
-                w = widths[i]
-                x = start_x + sum(widths[:i])
-                y = start_y
+                pdf.set_xy(start_x, start_y + h_linha)
                 
-                pdf.rect(x, y, w, h_linha, 'D')
-                pdf.set_xy(x, y + 1)
-                
-                align = 'L' if i == 0 else 'C'
-                pdf.multi_cell(w, line_height, texto, border=0, align=align)
-                
-            pdf.set_xy(start_x, start_y + h_linha)
-            
-        res = pdf.output(dest='S')
-        if isinstance(res, str): return res.encode('latin-1')
-        return bytes(res)
+            res = pdf.output(dest='S')
+            if isinstance(res, str): return res.encode('latin-1')
+            return bytes(res)
+        except Exception:
+            return None
 
+    @st.cache_data(show_spinner=False)
     def gerar_pdf_ranking(df, titulo, tipo="estoque"):
-        pdf = PDFReport()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
-        pdf.ln(5)
-        
-        pdf.set_fill_color(17, 17, 17)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", 'B', 9)
-        widths = [20, 120, 50]
-        
-        if tipo == "financeiro": colunas = ["POS.", "RAZAO SOCIAL / DESCRICAO", "VALOR TOTAL"]
-        else: colunas = ["POS.", "ITEM / DESCRICAO", "QUANTIDADE EM ESTOQUE"]
+        try:
+            pdf = PDFReport()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+            pdf.ln(5)
             
-        for i, col in enumerate(colunas):
-            pdf.cell(widths[i], 8, col, border=1, fill=True, align='C')
-        pdf.ln()
-        
-        pdf.set_text_color(26, 28, 30)
-        pdf.set_font("Arial", '', 8)
-        line_height = 5
-        
-        col_nome = df.columns[0]
-        col_valor = df.columns[1]
-        df_ord = df.sort_values(by=col_valor, ascending=False).reset_index(drop=True)
-        
-        for i, row in df_ord.iterrows():
-            pos = f"{i + 1}."
-            nome = limpar_texto(row[col_nome]) 
-            if tipo == "financeiro": valor = f"R$ {row[col_valor]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            else: valor = f"{int(row[col_valor])} un."
+            pdf.set_fill_color(17, 17, 17)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Arial", 'B', 9)
+            widths = [20, 120, 50]
+            
+            if tipo == "financeiro": colunas = ["POS.", "RAZAO SOCIAL / DESCRICAO", "VALOR TOTAL"]
+            else: colunas = ["POS.", "ITEM / DESCRICAO", "QUANTIDADE EM ESTOQUE"]
                 
-            linha_dados = [pos, nome, valor]
-            max_linhas = 1
-            for j, item in enumerate(linha_dados):
-                w_util = widths[j] - 2
-                w_texto = pdf.get_string_width(item)
-                linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
-                if linhas > max_linhas: max_linhas = linhas
+            for i, col in enumerate(colunas):
+                pdf.cell(widths[i], 8, col, border=1, fill=True, align='C')
+            pdf.ln()
+            
+            pdf.set_text_color(26, 28, 30)
+            pdf.set_font("Arial", '', 8)
+            line_height = 5
+            
+            col_nome = df.columns[0]
+            col_valor = df.columns[1]
+            df_ord = df.sort_values(by=col_valor, ascending=False).reset_index(drop=True)
+            
+            for i, row in df_ord.iterrows():
+                pos = f"{i + 1}."
+                nome = limpar_texto(row[col_nome]) 
+                if tipo == "financeiro": valor = f"R$ {row[col_valor]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                else: valor = f"{int(row[col_valor])} un."
                     
-            h_linha = (max_linhas * line_height) + 2
-            
-            if pdf.get_y() + h_linha > 275:
-                pdf.add_page()
-                pdf.set_fill_color(17, 17, 17)
-                pdf.set_text_color(255, 255, 255)
-                pdf.set_font("Arial", 'B', 9)
-                for j, col in enumerate(colunas): pdf.cell(widths[j], 8, col, border=1, fill=True, align='C')
-                pdf.ln()
-                pdf.set_text_color(26, 28, 30)
-                pdf.set_font("Arial", '', 8)
+                linha_dados = [pos, nome, valor]
+                max_linhas = 1
+                for j, item in enumerate(linha_dados):
+                    w_util = widths[j] - 2
+                    w_texto = pdf.get_string_width(item)
+                    linhas = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                    if linhas > max_linhas: max_linhas = linhas
+                        
+                h_linha = (max_linhas * line_height) + 2
                 
-            start_x = pdf.get_x()
-            start_y = pdf.get_y()
-            
-            for j, item in enumerate(linha_dados):
-                w = widths[j]
-                x = start_x + sum(widths[:j])
-                y = start_y
-                pdf.rect(x, y, w, h_linha, 'D')
-                pdf.set_xy(x, y + 1)
-                align = 'C' if j == 0 else ('L' if j == 1 else 'R')
-                pdf.multi_cell(w, line_height, item, border=0, align=align)
+                if pdf.get_y() + h_linha > 275:
+                    pdf.add_page()
+                    pdf.set_fill_color(17, 17, 17)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.set_font("Arial", 'B', 9)
+                    for j, col in enumerate(colunas): pdf.cell(widths[j], 8, col, border=1, fill=True, align='C')
+                    pdf.ln()
+                    pdf.set_text_color(26, 28, 30)
+                    pdf.set_font("Arial", '', 8)
+                    
+                start_x = pdf.get_x()
+                start_y = pdf.get_y()
                 
-            pdf.set_xy(start_x, start_y + h_linha)
-            
-        res = pdf.output(dest='S')
-        if isinstance(res, str): return res.encode('latin-1')
-        return bytes(res)
+                for j, item in enumerate(linha_dados):
+                    w = widths[j]
+                    x = start_x + sum(widths[:j])
+                    y = start_y
+                    pdf.rect(x, y, w, h_linha, 'D')
+                    pdf.set_xy(x, y + 1)
+                    align = 'C' if j == 0 else ('L' if j == 1 else 'R')
+                    pdf.multi_cell(w, line_height, item, border=0, align=align)
+                    
+                pdf.set_xy(start_x, start_y + h_linha)
+                
+            res = pdf.output(dest='S')
+            if isinstance(res, str): return res.encode('latin-1')
+            return bytes(res)
+        except Exception:
+            return None
 
 # ==========================================
 # AGENDA ICS
@@ -343,8 +343,8 @@ if arquivos_enviados:
                     else:
                         st.info("🎯 **Módulo de Logística e Inventário**")
                         
-                        col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quantidade', 'saldo', 'estoque'])), None)
-                        col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome'])), None)
+                        col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quant', 'saldo', 'estoque'])), None)
+                        col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome', 'peça'])), None)
                         col_marca = next((v for k, v in cols_limpas.items() if 'marca' in k or 'fabricante' in k), None)
                         col_prat = next((v for k, v in cols_limpas.items() if 'prateleira' in k or 'local' in k), None)
                         col_obs = next((v for k, v in cols_limpas.items() if 'obs' in k or 'coment' in k), None)
@@ -374,53 +374,68 @@ if arquivos_enviados:
                             else:
                                 col_m1.metric("Itens Analisados", len(df))
                                 col_m2.metric("Total geral de itens", f"{int(df[col_qtd].sum())} un.")
-                                st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não detectada no arquivo.")
+                                st.warning("⚠️ **Atenção:** Coluna de 'ESTOQUE MÍNIMO' não detetada no ficheiro.")
+                        else:
+                            st.warning("⚠️ O sistema não reconheceu as colunas exatas (Quantidade, Descrição). As métricas superiores estão inativas, mas a base de dados abaixo continua a funcionar.")
 
                         st.write("---")
                         busca_est = campo_pesquisa("🔍 Filtro", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
                         
                         colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
                         
+                        df_base = df.copy()
                         if colunas_desejadas:
-                            df_filtrado = df[colunas_desejadas].copy()
-                            if busca_est:
-                                mask_est = df_filtrado.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
-                                df_filtrado = df_filtrado[mask_est]
+                            df_base = df_base[colunas_desejadas]
+                            nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
+                            df_base = df_base.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_base.columns})
                             
-                            aba_tab, aba_visu = st.tabs(["📋 Base de Dados Operacional", "📊 Distribuição de Estoque"])
+                        if busca_est:
+                            mask_est = df_base.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
+                            df_base = df_base[mask_est]
+                        
+                        aba_tab, aba_visu = st.tabs(["📋 Base de Dados Operacional", "📊 Distribuição de Estoque"])
+                        
+                        with aba_tab:
+                            titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
                             
-                            with aba_tab:
-                                titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
-                                nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
-                                df_tabela = df_filtrado.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_filtrado.columns})
-                                
-                                col_t1, col_t2 = st.columns([0.8, 0.2])
-                                with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
-                                with col_t2:
-                                    if FPDF is not None and not df_tabela.empty:
-                                        st.download_button(label="📄 Baixar PDF", data=gerar_pdf_tabela(df_tabela, titulo_tab_est), file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
-                                    elif FPDF is None:
-                                        st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
+                            col_t1, col_t2 = st.columns([0.8, 0.2])
+                            with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
+                            with col_t2:
+                                if FPDF is not None and not df_base.empty:
+                                    pdf_dados = gerar_pdf_tabela(df_base, titulo_tab_est)
+                                    if pdf_dados:
+                                        st.download_button(label="📄 Baixar PDF", data=pdf_dados, file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
+                                    else:
+                                        st.error("Erro interno no gerador.")
+                                elif FPDF is None:
+                                    st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
 
-                                st.dataframe(df_tabela, use_container_width=True)
+                            st.dataframe(df_base, use_container_width=True)
 
-                            with aba_visu:
-                                mostrar_grafico = st.toggle("Exibir Gráfico de Volumetria", value=False, key=f"tgl_graf_{arquivo.name}")
-                                
-                                if mostrar_grafico:
+                        with aba_visu:
+                            mostrar_grafico = st.toggle("Exibir Gráfico de Volumetria", value=False, key=f"tgl_graf_{arquivo.name}")
+                            
+                            if mostrar_grafico:
+                                if col_qtd and col_desc:
                                     titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"CONTROLE DE VOLUME - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
-                                    dados_grafico = df_filtrado.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
+                                    
+                                    col_q_nome = "QUANTIDADE" if colunas_desejadas else col_qtd
+                                    col_d_nome = "DESCRIÇÃO" if colunas_desejadas else col_desc
+                                    
+                                    dados_grafico = df_base.groupby(col_d_nome)[col_q_nome].sum().reset_index().sort_values(by=col_q_nome, ascending=True)
                                     
                                     col_g1, col_g2 = st.columns([0.8, 0.2])
                                     with col_g1: st.write("💡 *Baixe em PNG ou PDF.*")
                                     with col_g2:
                                         if FPDF is not None and not dados_grafico.empty:
-                                            st.download_button(label="📄 Baixar PDF", data=gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque"), file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
+                                            pdf_rk = gerar_pdf_ranking(dados_grafico, titulo_graf_est, tipo="estoque")
+                                            if pdf_rk:
+                                                st.download_button(label="📄 Baixar PDF", data=pdf_rk, file_name=f"Ranking_Estoque.pdf", mime="application/pdf", key=f"btn_rk_{arquivo.name}", use_container_width=True)
                                         elif FPDF is None:
                                             st.error("⚠️ Falta a biblioteca 'fpdf' no GitHub!")
 
-                                    if not df_filtrado.empty and st_echarts is not None:
-                                        dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
+                                    if not df_base.empty and st_echarts is not None:
+                                        dados_barras_formatados = [{"value": int(row[col_q_nome]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
                                         altura_dinamica = max(500, len(dados_grafico) * 45)
                                         
                                         bar_options = {
@@ -430,15 +445,17 @@ if arquivos_enviados:
                                             "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
                                             "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
                                             "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
-                                            "yAxis": {"type": "category", "data": dados_grafico[col_desc].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
+                                            "yAxis": {"type": "category", "data": dados_grafico[col_d_nome].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
                                             "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#111111", "borderRadius": [0, 6, 6, 0]}}]
                                         }
                                         st_echarts(options=bar_options, height=f"{altura_dinamica}px")
                                 else:
-                                    st.info("📊 O gráfico está desativado para otimizar o desempenho. Clique no interruptor acima para visualizá-lo.")
+                                    st.warning("O gráfico não pode ser gerado porque as colunas de quantidade ou descrição não foram perfeitamente identificadas no seu ficheiro.")
+                            else:
+                                st.info("📊 O gráfico está desativado para otimizar o desempenho. Clique no interruptor acima para visualizá-lo.")
 
                 except Exception as e:
-                    st.error(f"Erro no processamento do arquivo: {e}")
+                    st.error(f"Erro no processamento do ficheiro: {e}")
 
             elif extensao in ['docx', 'txt']:
                 st.info("🎯 **Módulo de Documentação Ativado**")
