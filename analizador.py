@@ -7,6 +7,7 @@ import urllib.parse
 import io
 import requests
 import os
+import re  # Novo motor Regex para extração automática
 
 # --- MOTORES EXTERNOS ---
 try:
@@ -23,6 +24,11 @@ try:
     from streamlit_echarts import st_echarts
 except ImportError:
     st_echarts = None
+
+try:
+    import plotly.graph_objects as go
+except ImportError:
+    go = None
 
 try:
     from fpdf import FPDF
@@ -110,14 +116,13 @@ def gerar_link_email():
 # ==========================================
 def limpar_texto(t):
     import unicodedata
-    return unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8')
+    if pd.isna(t): return ""
+    texto = str(t).replace('🚨', '(!)').replace('⚠️', '(!)').replace('✅', '(OK)').replace('🛡️', '').replace('📦', '[]')
+    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
 
 if FPDF is not None:
     class PDFReport(FPDF):
-        def header(self):
-            self.set_font('Arial', 'B', 10)
-            self.cell(0, 10, 'ANALISADOR JNL - Relatorio Oficial', 0, 1, 'C')
-            self.ln(2)
+        # Cabeçalho removido conforme as suas ordens para um PDF limpo.
         def footer(self):
             self.set_y(-15)
             self.set_font('Arial', 'I', 8)
@@ -128,10 +133,10 @@ if FPDF is not None:
         widths = []
         for col in colunas:
             c = str(col).upper()
-            if 'DESCRI' in c or 'RAZAO' in c or 'NOME' in c or 'ITEM' in c: widths.append(page_width * 0.35)
-            elif 'OBS' in c: widths.append(page_width * 0.25)
-            elif 'DATA' in c or 'SITUA' in c or 'MARCA' in c or 'LOCAL' in c or 'PRAT' in c: widths.append(page_width * 0.15)
-            elif 'QTD' in c or 'QUANTIDADE' in c or 'MIN' in c or 'MÍN' in c or 'FATURADA' in c: widths.append(page_width * 0.1)
+            if 'DESCRI' in c or 'RAZAO' in c or 'NOME' in c or 'ITEM' in c: widths.append(page_width * 0.50)
+            elif 'PRAT' in c: widths.append(page_width * 0.15)
+            elif 'QTD' in c or 'QUANT' in c: widths.append(page_width * 0.15)
+            elif 'MÍN' in c or 'MIN' in c: widths.append(page_width * 0.20)
             else: widths.append(page_width * 0.15)
         total = sum(widths) if sum(widths) > 0 else page_width
         return [w * (page_width / total) for w in widths]
@@ -141,9 +146,12 @@ if FPDF is not None:
         try:
             pdf = PDFReport()
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
-            pdf.ln(5)
+            
+            # Título principal do documento
+            if titulo:
+                pdf.set_font("Arial", 'B', 12)
+                pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+                pdf.ln(2)
             
             colunas = list(df.columns)
             widths = obter_larguras_dinamicas(colunas)
@@ -152,6 +160,7 @@ if FPDF is not None:
             pdf.set_text_color(255, 255, 255)
             pdf.set_font("Arial", 'B', 9)
             
+            # Cabeçalhos
             for i, col in enumerate(colunas):
                 pdf.cell(widths[i], 8, limpar_texto(col), border=1, fill=True, align='C')
             pdf.ln()
@@ -188,13 +197,27 @@ if FPDF is not None:
                 start_y = pdf.get_y()
                 
                 for i, item in enumerate(row):
+                    texto = limpar_texto(item)
                     w = widths[i]
                     x = start_x + sum(widths[:i])
                     y = start_y
+                    
                     pdf.rect(x, y, w, h_linha, 'D')
-                    pdf.set_xy(x, y + 1)
-                    align = 'L' if i == 0 else 'C'
-                    pdf.multi_cell(w, line_height, limpar_texto(item), border=0, align=align)
+                    
+                    # Centralização Vertical Cirúrgica
+                    w_util = w - 2
+                    w_texto = pdf.get_string_width(texto)
+                    linhas_deste_texto = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                    offset_y = y + (h_linha - (linhas_deste_texto * line_height)) / 2
+                    
+                    pdf.set_xy(x, offset_y)
+                    
+                    # Alinhamento Horizontal Específico (Esquerda para Descrição, Centro para o Resto)
+                    c_up = colunas[i].upper()
+                    if "DESCRI" in c_up or "RAZÃO" in c_up: align_h = 'L'
+                    else: align_h = 'C'
+                    
+                    pdf.multi_cell(w, line_height, texto, border=0, align=align_h)
                     
                 pdf.set_xy(start_x, start_y + h_linha)
                 
@@ -209,9 +232,11 @@ if FPDF is not None:
         try:
             pdf = PDFReport()
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
-            pdf.ln(5)
+            
+            if titulo:
+                pdf.set_font("Arial", 'B', 12)
+                pdf.cell(0, 10, limpar_texto(titulo), 0, 1, 'C')
+                pdf.ln(5)
             
             pdf.set_fill_color(17, 17, 17)
             pdf.set_text_color(255, 255, 255)
@@ -266,8 +291,15 @@ if FPDF is not None:
                     w = widths[j]
                     x = start_x + sum(widths[:j])
                     y = start_y
+                    
                     pdf.rect(x, y, w, h_linha, 'D')
-                    pdf.set_xy(x, y + 1)
+                    
+                    w_util = w - 2
+                    w_texto = pdf.get_string_width(item)
+                    linhas_deste_texto = math.ceil(w_texto / w_util) if w_util > 0 else 1
+                    offset_y = y + (h_linha - (linhas_deste_texto * line_height)) / 2
+                    
+                    pdf.set_xy(x, offset_y)
                     align = 'C' if j == 0 else ('L' if j == 1 else 'R')
                     pdf.multi_cell(w, line_height, item, border=0, align=align)
                     
@@ -303,11 +335,9 @@ def criar_lembrete_estoque(item, qtd, minimo):
 # ==========================================
 lista_arquivos_processar = []
 
-# Adiciona arquivos do upload manual
 if arquivos_enviados:
     lista_arquivos_processar.extend(arquivos_enviados)
 
-# Adiciona arquivo da sincronização automática
 if link_auto:
     try:
         if link_auto.startswith("http://") or link_auto.startswith("https://"):
@@ -317,7 +347,6 @@ if link_auto:
             arquivo_simulado.name = "Sincronizacao_Nuvem.csv"
             lista_arquivos_processar.append(arquivo_simulado)
         else:
-            # Lógica de Limpeza de Caminho do Windows para evitar erros
             caminho_limpo = link_auto.strip('\"').strip('\'').strip()
             caminho_limpo = os.path.expanduser(caminho_limpo)
             caminho_limpo = os.path.normpath(caminho_limpo)
@@ -330,7 +359,6 @@ if link_auto:
                 lista_arquivos_processar.append(arquivo_simulado)
             else:
                 st.sidebar.error(f"Arquivo local não encontrado: {caminho_limpo}")
-                st.sidebar.info("💡 Nota: Se estiver a rodar o sistema online (nuvem), ele não tem acesso ao seu disco local. Terá de fazer upload manual.")
     except Exception as e:
         st.sidebar.error(f"Falha na sincronização: {e}")
 
@@ -407,10 +435,16 @@ if lista_arquivos_processar:
                         
                         col_qtd = next((v for k, v in cols_limpas.items() if any(x in k for x in ['qtd', 'quant', 'saldo', 'estoque', 'faturada'])), None)
                         col_desc = next((v for k, v in cols_limpas.items() if any(x in k for x in ['descri', 'item', 'produto', 'nome', 'peça'])), None)
-                        col_marca = next((v for k, v in cols_limpas.items() if 'marca' in k or 'fabricante' in k), None)
-                        col_prat = next((v for k, v in cols_limpas.items() if 'prateleira' in k or 'local' in k), None)
-                        col_obs = next((v for k, v in cols_limpas.items() if 'obs' in k or 'coment' in k), None)
                         col_minimo = next((v for k, v in cols_limpas.items() if 'mínimo' in k or 'minimo' in k), None)
+
+                        # MOTOR REGEX: Extração Automática de Prateleira a partir da Descrição
+                        if col_desc:
+                            df['PRATELEIRA_EXTRAIDA'] = df[col_desc].apply(
+                                lambda x: re.search(r'\b([A-Z]-\d{2})\b', str(x).upper()).group(1) if re.search(r'\b([A-Z]-\d{2})\b', str(x).upper()) else "-"
+                            )
+                            col_prat = 'PRATELEIRA_EXTRAIDA'
+                        else:
+                            col_prat = next((v for k, v in cols_limpas.items() if 'prateleira' in k or 'local' in k), None)
 
                         if col_qtd and col_desc:
                             df[col_qtd] = pd.to_numeric(df[col_qtd], errors='coerce').fillna(0)
@@ -426,8 +460,6 @@ if lista_arquivos_processar:
 
                                 if not df_critico.empty:
                                     st.error(f"**Atenção:** {len(df_critico)} Itens atingiram a cota mínima de reposição.")
-                                    
-                                    # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
                                     link_email_geral = gerar_link_email()
                                     btn_html = f'''
                                     <a href="{link_email_geral}" target="_parent" style="text-decoration: none; margin-bottom: 15px; display: inline-block;">
@@ -443,7 +475,8 @@ if lista_arquivos_processar:
                                         item_nome = linha[col_desc]
                                         saldo = int(linha[col_qtd])
                                         minimo_item = int(linha[col_minimo])
-                                        c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Marca: {linha.get(col_marca, 'S/M')}")
+                                        prateleira_info = linha[col_prat] if col_prat else "S/M"
+                                        c1.write(f"📦 **{item_nome}** | Saldo: **{saldo}** (Mín: **{minimo_item}**) | Prateleira: {prateleira_info}")
                                         c2.download_button(label="🔔 Repor", data=criar_lembrete_estoque(item_nome, saldo, minimo_item), file_name=f"Repor_{str(item_nome)[:10]}.ics", key=str(uuid.uuid4()))
                             else:
                                 col_m1.metric("Itens Analisados", len(df))
@@ -453,16 +486,11 @@ if lista_arquivos_processar:
                             st.warning("⚠️ O sistema não reconheceu as colunas exatas (Quantidade, Descrição). As métricas superiores estão inativas, mas a base de dados abaixo continua a funcionar.")
 
                         st.write("---")
-                        busca_est = campo_pesquisa("🔍 Filtro", "Pesquise por descrição, marca ou prateleira...", key=f"be_{arquivo.name}")
-                        
-                        colunas_desejadas = [c for c in [col_qtd, col_minimo, col_desc, col_marca, col_prat, col_obs] if c]
+                        busca_est = campo_pesquisa("🔍 Filtro", "Pesquise por descrição, prateleira...", key=f"be_{arquivo.name}")
                         
                         df_base = df.copy()
-                        if colunas_desejadas:
-                            df_base = df_base[colunas_desejadas]
-                            nomes_exibicao = {col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO", col_desc: "DESCRIÇÃO", col_marca: "MARCA", col_prat: "PRATELEIRA", col_obs: "OBSERVAÇÕES"}
-                            df_base = df_base.rename(columns={k: v for k, v in nomes_exibicao.items() if k in df_base.columns})
-                            
+                        
+                        # Aplica Filtro Dinâmico
                         if busca_est:
                             mask_est = df_base.astype(str).apply(lambda x: x.str.contains(busca_est, case=False, na=False)).any(axis=1)
                             df_base = df_base[mask_est]
@@ -470,33 +498,88 @@ if lista_arquivos_processar:
                         aba_tab, aba_visu = st.tabs(["📋 Base de Dados Operacional", "📊 Distribuição de Estoque"])
                         
                         with aba_tab:
-                            titulo_tab_est = st.text_input("📝 Título do Relatório PDF (Tabela):", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
-                            
-                            col_t1, col_t2, col_t3 = st.columns([0.6, 0.2, 0.2])
-                            with col_t1: st.write("💡 *Baixe em PNG ou PDF.*")
-                            with col_t2:
-                                if FPDF is not None and not df_base.empty:
-                                    pdf_dados = gerar_pdf_tabela(df_base, titulo_tab_est)
-                                    if pdf_dados:
-                                        st.download_button(label="📄 Baixar PDF", data=pdf_dados, file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
-                                    else:
-                                        st.error("Erro interno no gerador.")
-                                elif FPDF is None:
-                                    st.error("⚠️ Falta 'fpdf' no GitHub!")
-                            
-                            with col_t3:
-                                # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
-                                link_email_tab = gerar_link_email()
-                                btn_html_tab = f'''
-                                <a href="{link_email_tab}" target="_parent" style="text-decoration: none;">
-                                    <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
-                                        📧 Abrir Outlook
-                                    </div>
-                                </a>
-                                '''
-                                st.markdown(btn_html_tab, unsafe_allow_html=True)
+                            c_opt1, c_opt2 = st.columns([0.7, 0.3])
+                            with c_opt1:
+                                titulo_tab_est = st.text_input("📝 Título do Relatório PDF:", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
+                            with c_opt2:
+                                # INTERRUPTOR TÁTICO
+                                st.write("") # Espaçamento
+                                mostrar_minimo = st.toggle("Mostrar 'Estoque Mínimo'", value=True)
 
-                            st.dataframe(df_base, use_container_width=True)
+                            # CONSTRUÇÃO ORDENADA DAS COLUNAS (PRATELEIRA / DESCRIÇÃO / QUANTIDADE / ESTOQUE MÍNIMO)
+                            colunas_tabela = []
+                            if col_prat: colunas_tabela.append(col_prat)
+                            if col_desc: colunas_tabela.append(col_desc)
+                            if col_qtd: colunas_tabela.append(col_qtd)
+                            if mostrar_minimo and col_minimo: colunas_tabela.append(col_minimo)
+                            
+                            if colunas_tabela:
+                                df_base_exibicao = df_base[colunas_tabela].copy()
+                                nomes_exibicao = {col_prat: "PRATELEIRA", col_desc: "DESCRIÇÃO", col_qtd: "QUANTIDADE", col_minimo: "ESTOQUE MÍNIMO"}
+                                df_base_exibicao = df_base_exibicao.rename(columns=nomes_exibicao)
+                                
+                                # Formatação Visual
+                                if "QUANTIDADE" in df_base_exibicao.columns:
+                                    df_base_exibicao["QUANTIDADE"] = df_base_exibicao["QUANTIDADE"].apply(lambda x: f"{int(x)} un." if pd.notnull(x) else "0 un.")
+                                if "ESTOQUE MÍNIMO" in df_base_exibicao.columns:
+                                    df_base_exibicao["ESTOQUE MÍNIMO"] = df_base_exibicao["ESTOQUE MÍNIMO"].apply(lambda x: f"{int(x)} un." if pd.notnull(x) else "0 un.")
+
+                                col_t1, col_t2, col_t3 = st.columns([0.6, 0.2, 0.2])
+                                with col_t1: st.write("💡 *Baixe o PDF ou envie um E-mail.*")
+                                with col_t2:
+                                    if FPDF is not None and not df_base_exibicao.empty:
+                                        # O PDF agora recebe a tabela exata com as colunas e ordem escolhida!
+                                        pdf_dados = gerar_pdf_tabela(df_base_exibicao, titulo_tab_est)
+                                        if pdf_dados:
+                                            st.download_button(label="📄 Baixar PDF", data=pdf_dados, file_name=f"Tabela_Estoque.pdf", mime="application/pdf", key=f"btn_tb_{arquivo.name}", use_container_width=True)
+                                        else:
+                                            st.error("Erro interno no gerador.")
+                                    elif FPDF is None:
+                                        st.error("⚠️ Falta 'fpdf' no GitHub!")
+                                
+                                with col_t3:
+                                    link_email_tab = gerar_link_email()
+                                    btn_html_tab = f'''
+                                    <a href="{link_email_tab}" target="_parent" style="text-decoration: none;">
+                                        <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
+                                            📧 Abrir Outlook
+                                        </div>
+                                    </a>
+                                    '''
+                                    st.markdown(btn_html_tab, unsafe_allow_html=True)
+
+                                # TABELA BLINDADA DO PLOTLY COM ALINHAMENTOS DUPLOS (H/V)
+                                if go is not None:
+                                    cabecalhos = [f"<b>{c}</b>" for c in df_base_exibicao.columns]
+                                    celulas = [df_base_exibicao[c].tolist() for c in df_base_exibicao.columns]
+                                    
+                                    alinhamentos_plotly = []
+                                    larguras_colunas = []
+                                    for cab in df_base_exibicao.columns:
+                                        if "DESCRIÇÃO" in cab:
+                                            alinhamentos_plotly.append('left')
+                                            larguras_colunas.append(400)
+                                        else:
+                                            alinhamentos_plotly.append('center')
+                                            larguras_colunas.append(150)
+
+                                    fig_table = go.Figure(data=[go.Table(
+                                        columnwidth=larguras_colunas,
+                                        header=dict(values=cabecalhos, fill_color='#111111', align=alinhamentos_plotly, font=dict(family='Inter', color='white', size=13)),
+                                        cells=dict(
+                                            values=celulas, 
+                                            fill_color=[['#F8F9FB'] * len(df_base_exibicao)] * len(cabecalhos),
+                                            align=alinhamentos_plotly, 
+                                            font=dict(family='Inter', color='#1A1C1E', size=12), 
+                                            height=45 
+                                        )
+                                    )])
+                                    fig_table.update_layout(margin=dict(l=0, r=0, b=0, t=0), height=550)
+                                    st.plotly_chart(fig_table, use_container_width=True, config={'modeBarButtonsToAdd': ['toImage']})
+                                else:
+                                    st.dataframe(df_base_exibicao, use_container_width=True)
+                            else:
+                                st.warning("Não foi possível montar a tabela com as colunas requeridas.")
 
                         with aba_visu:
                             mostrar_grafico = st.toggle("Exibir Gráfico de Volumetria", value=False, key=f"tgl_graf_{arquivo.name}")
@@ -505,10 +588,7 @@ if lista_arquivos_processar:
                                 if col_qtd and col_desc:
                                     titulo_graf_est = st.text_input("📝 Título do Relatório PDF (Gráfico):", value=f"CONTROLE DE VOLUME - {datetime.now().strftime('%d/%m/%Y')}", key=f"tg_{arquivo.name}")
                                     
-                                    col_q_nome = "QUANTIDADE" if colunas_desejadas else col_qtd
-                                    col_d_nome = "DESCRIÇÃO" if colunas_desejadas else col_desc
-                                    
-                                    dados_grafico = df_base.groupby(col_d_nome)[col_q_nome].sum().reset_index().sort_values(by=col_q_nome, ascending=True)
+                                    dados_grafico = df_base.groupby(col_desc)[col_qtd].sum().reset_index().sort_values(by=col_qtd, ascending=True)
                                     
                                     col_g1, col_g2, col_g3 = st.columns([0.6, 0.2, 0.2])
                                     with col_g1: st.write("💡 *Baixe em PNG ou PDF.*")
@@ -521,7 +601,6 @@ if lista_arquivos_processar:
                                             st.error("⚠️ Falta 'fpdf' no GitHub!")
                                     
                                     with col_g3:
-                                        # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
                                         link_email_graf = gerar_link_email()
                                         btn_html_graf = f'''
                                         <a href="{link_email_graf}" target="_parent" style="text-decoration: none;">
@@ -533,7 +612,7 @@ if lista_arquivos_processar:
                                         st.markdown(btn_html_graf, unsafe_allow_html=True)
 
                                     if not df_base.empty and st_echarts is not None:
-                                        dados_barras_formatados = [{"value": int(row[col_q_nome]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
+                                        dados_barras_formatados = [{"value": int(row[col_qtd]), "label": {"show": True, "position": "right", "formatter": "{c} un.", "color": "#111111", "fontWeight": "bold"}} for _, row in dados_grafico.iterrows()]
                                         altura_dinamica = max(500, len(dados_grafico) * 45)
                                         
                                         bar_options = {
@@ -543,7 +622,7 @@ if lista_arquivos_processar:
                                             "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
                                             "grid": {"top": 60, "left": "1%", "right": "10%", "bottom": "1%", "containLabel": True},
                                             "xAxis": {"type": "value", "splitLine": {"lineStyle": {"type": "dashed", "color": "#E2E8F0"}}},
-                                            "yAxis": {"type": "category", "data": dados_grafico[col_d_nome].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
+                                            "yAxis": {"type": "category", "data": dados_grafico[col_desc].tolist(), "axisLabel": {"interval": 0, "width": 250, "overflow": "break", "lineHeight": 14, "color": "#111111"}},
                                             "series": [{"type": "bar", "data": dados_barras_formatados, "itemStyle": {"color": "#111111", "borderRadius": [0, 6, 6, 0]}}]
                                         }
                                         st_echarts(options=bar_options, height=f"{altura_dinamica}px")
