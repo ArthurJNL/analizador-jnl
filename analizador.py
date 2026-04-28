@@ -99,8 +99,8 @@ def formatar_orcamento(valor):
 # GERAÇÃO DE E-MAIL (OUTLOOK)
 # ==========================================
 def gerar_link_email():
-    assunto = "RELATÓRIO"
-    corpo = "Olá! Espero que esteja bem.\n\nSegue em anexo relatório puxado ."
+    assunto = "RELATÓRIO JNL"
+    corpo = "Olá! Espero que esteja bem.\n\nSegue em anexo o relatório puxado pelo Analisador."
     assunto_enc = urllib.parse.quote(assunto)
     corpo_enc = urllib.parse.quote(corpo)
     return f"mailto:?subject={assunto_enc}&body={corpo_enc}"
@@ -310,22 +310,27 @@ if arquivos_enviados:
 # Adiciona arquivo da sincronização automática
 if link_auto:
     try:
-        if link_auto.startswith("http"):
+        if link_auto.startswith("http://") or link_auto.startswith("https://"):
             response = requests.get(link_auto)
             response.raise_for_status()
             arquivo_simulado = io.BytesIO(response.content)
             arquivo_simulado.name = "Sincronizacao_Nuvem.csv"
             lista_arquivos_processar.append(arquivo_simulado)
         else:
-            caminho_limpo = link_auto.strip('\"').strip('\'')
+            # Lógica de Limpeza de Caminho do Windows para evitar erros
+            caminho_limpo = link_auto.strip('\"').strip('\'').strip()
+            caminho_limpo = os.path.expanduser(caminho_limpo)
+            caminho_limpo = os.path.normpath(caminho_limpo)
+            
             if os.path.exists(caminho_limpo):
-                extensao = caminho_limpo.split('.')[-1]
+                extensao = caminho_limpo.split('.')[-1].lower() if '.' in caminho_limpo else 'csv'
                 with open(caminho_limpo, 'rb') as f:
                     arquivo_simulado = io.BytesIO(f.read())
                 arquivo_simulado.name = f"Sincronizacao_Local.{extensao}"
                 lista_arquivos_processar.append(arquivo_simulado)
             else:
-                st.sidebar.error("Arquivo local não encontrado no caminho especificado.")
+                st.sidebar.error(f"Arquivo local não encontrado: {caminho_limpo}")
+                st.sidebar.info("💡 Nota: Se estiver a rodar o sistema online (nuvem), ele não tem acesso ao seu disco local. Terá de fazer upload manual.")
     except Exception as e:
         st.sidebar.error(f"Falha na sincronização: {e}")
 
@@ -422,9 +427,10 @@ if lista_arquivos_processar:
                                 if not df_critico.empty:
                                     st.error(f"**Atenção:** {len(df_critico)} Itens atingiram a cota mínima de reposição.")
                                     
+                                    # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
                                     link_email_geral = gerar_link_email()
                                     btn_html = f'''
-                                    <a href="{link_email_geral}" style="text-decoration: none; margin-bottom: 15px; display: inline-block;">
+                                    <a href="{link_email_geral}" target="_parent" style="text-decoration: none; margin-bottom: 15px; display: inline-block;">
                                         <div style="padding: 6px 14px; font-size: 14px; font-weight: 600; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
                                             📧 E-mail de Reposição (Outlook)
                                         </div>
@@ -479,9 +485,10 @@ if lista_arquivos_processar:
                                     st.error("⚠️ Falta 'fpdf' no GitHub!")
                             
                             with col_t3:
+                                # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
                                 link_email_tab = gerar_link_email()
                                 btn_html_tab = f'''
-                                <a href="{link_email_tab}" style="text-decoration: none;">
+                                <a href="{link_email_tab}" target="_parent" style="text-decoration: none;">
                                     <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
                                         📧 Abrir Outlook
                                     </div>
@@ -514,9 +521,10 @@ if lista_arquivos_processar:
                                             st.error("⚠️ Falta 'fpdf' no GitHub!")
                                     
                                     with col_g3:
+                                        # [CORREÇÃO AQUI: E-mail que quebra a barreira do Iframe]
                                         link_email_graf = gerar_link_email()
                                         btn_html_graf = f'''
-                                        <a href="{link_email_graf}" style="text-decoration: none;">
+                                        <a href="{link_email_graf}" target="_parent" style="text-decoration: none;">
                                             <div style="width: 100%; padding: 6px 0px; font-size: 14px; font-weight: 500; color: #111; background-color: #fff; border: 1px solid #D0D5DD; border-radius: 8px; text-align: center; cursor: pointer;">
                                                 📧 Abrir Outlook
                                             </div>
