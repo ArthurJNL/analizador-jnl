@@ -291,15 +291,8 @@ if FPDF is not None:
                     w = widths[j]
                     x = start_x + sum(widths[:j])
                     y = start_y
-                    
                     pdf.rect(x, y, w, h_linha, 'D')
-                    
-                    w_util = w - 2
-                    w_texto = pdf.get_string_width(item)
-                    linhas_deste_texto = math.ceil(w_texto / w_util) if w_util > 0 else 1
-                    offset_y = y + (h_linha - (linhas_deste_texto * line_height)) / 2
-                    
-                    pdf.set_xy(x, offset_y)
+                    pdf.set_xy(x, y + 1)
                     align = 'C' if j == 0 else ('L' if j == 1 else 'R')
                     pdf.multi_cell(w, line_height, item, border=0, align=align)
                     
@@ -502,9 +495,9 @@ if lista_arquivos_processar:
                             with c_opt1:
                                 titulo_tab_est = st.text_input("📝 Título do Relatório PDF:", value=f"Controle de Estoque - {datetime.now().strftime('%d/%m/%Y')}", key=f"tt_{arquivo.name}")
                             with c_opt2:
-                                # INTERRUPTOR TÁTICO
+                                # INTERRUPTOR TÁTICO BLINDADO COM KEY ÚNICA
                                 st.write("") # Espaçamento
-                                mostrar_minimo = st.toggle("Mostrar 'Estoque Mínimo'", value=True)
+                                mostrar_minimo = st.toggle("Mostrar 'Estoque Mínimo'", value=True, key=f"tgl_min_{arquivo.name}")
 
                             # CONSTRUÇÃO ORDENADA DAS COLUNAS (PRATELEIRA / DESCRIÇÃO / QUANTIDADE / ESTOQUE MÍNIMO)
                             colunas_tabela = []
